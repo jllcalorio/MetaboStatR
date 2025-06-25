@@ -1,0 +1,299 @@
+---
+title: "My Analysis"
+author: "as analyzed by my name"
+date: "`r Sys.Date()`"
+format:
+  html:
+    toc: true
+    toc-depth: 6
+    toc-expand: true    # Expand the level by default
+execute:
+  echo: false           # true to show R script; false to hide
+  warning: false
+  message: false
+  eval: true
+  fig.align: 'center'
+knitr:
+  opts_chunk: 
+    fig.width: 10      # Default width in inches
+    fig.height: 8      # Default height in inches
+    dev: svglite       # Uses vector graphics for high resolution
+    fig.dpi: 999       # Higher DPI for sharper plots
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Load data
+
+```{r}
+# Load required packages and data
+
+# Load packages
+pacman::p_load(tidyverse, patchwork)
+
+# Load my package
+devtools::load_all("~/My R Packages/MetaboStatR")
+
+# Load data
+org_data <- readr::read_csv("~/0 Data Analysis/my_file_formatted_in.csv",
+                     col_names = FALSE)
+```
+
+# **Data pre-processing**
+
+```{r message=TRUE, warning=TRUE}
+mypreprocess <- performPreprocessingPeakData(
+  raw_data             = org_data,
+  filterMissing        = 20, # Minimum %missing in all sample groups required to remove feature
+  denMissing           = 5, # Missing value imputation. A denominator in 1/denMissing
+  driftBatchCorrection = TRUE, # Logical. Defaults to TRUE to perform between-batch correction.
+  filterMaxRSD         = 30, # NULL to skip this filtering. LC-MS = 20 for 20%; GC-MS = 30 for 30%
+  filterMaxRSD_by      = "SQC",
+  filterMaxVarSD       = NULL, # NULL to skip this filtering. Remove nth percentile of features with the lowest variability
+  normalize            = TRUE, # Logical. FALSE to not normalize. Defaults to TRUE to normalize data using osmolality values if given, otherwise normalizes by sum
+  log10transform       = TRUE, # Logical. Defaults to TRUE to log10 transform the data
+  scalePCA             = "meanSD", # Defaults to "meanSD". c(NULL, "mean", "meanSD", "meanSD2"). "mean" = mean-centered only; meanSD = mean-centered and divided by SD of each feature; meanSD2 = mean-centered and divided by the square root of SD of each feature
+  scaleOPLSDA          = "meanSD2",
+  outliers             = NULL
+)
+
+message(paste0("There were ", mypreprocess$MissingValues, " missing across the data."))
+message("Below are the changes in the data per data preprocessing step.")
+mypreprocess$Dimensions
+```
+
+# **Before and After pre-processing**
+
+## Using data for PCA
+
+```{r}
+myplotbeforeafter.pcaData <- plotBeforeAfter(
+  data     = mypreprocess,
+  scaled   = "PCA",
+  group_by = "Sample"
+)
+
+myplotbeforeafter.pcaData$plot_4in1
+```
+
+## Using data for OPLS-DA
+
+```{r}
+myplotbeforeafter.oplsdaData <- plotBeforeAfter(
+  data     = mypreprocess,
+  scaled   = "OPLS-DA",
+  group_by = "Sample"
+)
+
+myplotbeforeafter.oplsdaData$plot_4in1
+```
+
+# **Dimension Reduction**
+
+## PCA on QC
+
+```{r}
+mydimreduct_pca_qc <- performDimensionReduction(
+  data          = mypreprocess,
+  type          = "PCA", # c("PCA", "OPLS-DA") # To be added c("PLS-DA", "sPLS-DA")
+  reduceWhat    = "QC", # c("QC", "BS"): QC = Quality Control Samples; BS = Biological Samples
+  screeWhat     = "variance", # c("variance", "eigenvalue")
+  screeType     = "both", # "both" = c("bar", "line"). Can choose either
+  screeLabs     = TRUE, # logical
+  screeTitle    = NULL, # Scree plot title
+  screeXLab     = "Principal Components",
+  screeYLab     = "% Variance Explained",
+  scoresEllipse = TRUE,
+  scoresTitle   = NULL,
+  scoresLegend  = "Batch"
+)
+
+mydimreduct_pca_qc$ScreePlot
+mydimreduct_pca_qc$ScoresPlot
+```
+
+## PCA on 'Biological' Samples
+
+```{r}
+mydimreduct_pca_sample <- performDimensionReduction(
+  data          = mypreprocess,
+  type          = "PCA", # c("PCA", "OPLS-DA") # To be added c("PLS-DA", "sPLS-DA")
+  reduceWhat    = "BS", # c("QC", "BS"): QC = Quality Control Samples; BS = Biological Samples
+  screeWhat     = "variance", # c("variance", "eigenvalue")
+  screeType     = "both", # "both" = c("bar", "line"). Can choose either bar or line as well
+  screeLabs     = TRUE, # logical
+  screeTitle    = NULL, # Scree plot title
+  screeXLab     = "Principal Components",
+  screeYLab     = "% Variance Explained",
+  scoresEllipse = TRUE,
+  scoresTitle   = NULL,
+  scoresLegend  = "Batch"
+)
+
+mydimreduct_pca_sample$ScreePlot
+mydimreduct_pca_sample$ScoresPlot
+```
+
+## OPLS-DA
+
+```{r}
+mydimreduct_oplsda <- performDimensionReduction(
+  data          = mypreprocess,
+  type          = "OPLS-DA", # c("PCA", "OPLS-DA") # To be added c("PLS-DA", "sPLS-DA")
+  reduceWhat    = "BS", # c("QC", "BS"): QC = Quality Control Samples; BS = Biological Samples
+  arrangeLevels = c("Group 1", "Group 2", "Group 3"), # defaults to unique(data$Metadata$Groups)
+  screeWhat     = "variance", # c("variance", "eigenvalue")
+  screeType     = "both", # "both" = c("bar", "line"). Can choose either
+  screeLabs     = TRUE, # logical
+  screeTitle    = NULL, # Scree plot title
+  screeXLab     = "Principal Components",
+  screeYLab     = "% Variance Explained",
+  scoresEllipse = TRUE,
+  scoresTitle   = NULL,
+  scoresLegend  = "Batch"
+)
+```
+
+# **Fold change and ANOVA/Kruskal-Wallis**
+
+```{r}
+myfoldchange <- performFoldChange(
+  data          = mypreprocess,
+  arrangeLevels = c("Group 1", "Group 2", "Group 3"),
+  sortFC        = TRUE
+)
+```
+
+```{r}
+mycomparativeanalysis <- performComparativeAnalysis(
+  data   = mypreprocess,
+  sort_p = TRUE,
+  paired = FALSE,
+  plot_iden_met = NULL
+)
+```
+
+## Volcano Plot
+
+```{r}
+myvolcano <- plotVolcano(
+  PPData = mypreprocess,
+  FCData = myfoldchange,
+  CAData = mycomparativeanalysis,
+  arrangeLevels = c("Group 1", "Group 2", "Group 3"),        # Vector. A user-input data. Defaults to NULL = unique groups. Suggests to be inputted (control, case1, case2) where case2 is worse than case1 e.g., Group 1 than Group 2
+  fcUP          = 1.5,
+  fcDown        = .8,
+  adjpvalue     = 0.05
+)
+
+# Print TOP 6 and BOTTOM 6 features in the order according to arrangeLevels parameter
+
+print("Top 15 features: Group 1 vs Group 2")
+myvolcano$`VolcanoData_filtered_Group 1 vs. Group 2` %>% head(15)
+
+print("Bottom 15 features: Group 1 vs Group 2")
+myvolcano$`VolcanoData_filtered_Group 1 vs. Group 2` %>% tail(15)
+
+print("Top 15 features: Group 1 vs Group 3")
+myvolcano$`VolcanoData_filtered_Group 1 vs. Group 3` %>% head(15)
+
+print("Bottom 15 features: Group 1 vs Group 3")
+myvolcano$`VolcanoData_filtered_Group 1 vs. Group 3` %>% tail(15)
+
+print("Top 15 features: Group 2 vs Group 3")
+myvolcano$`VolcanoData_filtered_Group 2 vs. Group 3` %>% head(15)
+
+print("Bottom 15 features: Group 2 vs Group 3")
+myvolcano$`VolcanoData_filtered_Group 2 vs. Group 3` %>% tail(15)
+```
+
+# **AUROC**
+
+```{r}
+myauroc <- performAUROC(
+  data_PP        = mypreprocess,
+  data_DR        = mydimreduct_oplsda,
+  data_CA        = mycomparativeanalysis,
+  data_FC        = myfoldchange,
+  arrangeLevels  = c("Group 3", "Group 1", "Group 2"), # Arrange from control to case
+  VIPmin         = 1,
+  fcUP           = 1.5,
+  fcDown         = .8,
+  adjpvalue      = .05,
+  direction      = "auto2",
+  top_n          = 5, 
+  plot_iden_met = NULL
+)
+```
+
+# **Regression**
+
+```{r}
+myregression <- performRegression(
+    mypreprocess,
+    method        = c("lasso", "enet"),  # Choose either "lasso", "enet", or both
+    train_percent = 80, # percent of data to be used in training
+    ref           = "Group 3",
+    lambda        = "1se", # The lambda value. c("1se", "min") Defaults to "1se" for fewer features, lower risk of over fitting
+    remember      = 1100 # value used in set.seed
+)
+
+```
+
+```{r}
+# Save all data frames in 1 Excel file
+performExport2Excel(
+  results     = mypreprocess, 
+  folder_name = "Negative Mode", 
+  file_name   = "Data preprocessing"
+)
+
+performExport2Excel(
+  results     = mydimreduct_pca_qc, 
+  folder_name = "Negative Mode", 
+  file_name   = "PCA on QC Samples"
+)
+
+performExport2Excel(
+  results     = mydimreduct_pca_sample, 
+  folder_name = "Negative Mode", 
+  file_name   = "PCA on Urine Samples"
+)
+
+performExport2Excel(
+  results     = mydimreduct_oplsda, 
+  folder_name = "Negative Mode", 
+  file_name   = "OPLS-DA"
+)
+
+performExport2Excel(
+  results     = myfoldchange, 
+  folder_name = "Negative Mode", 
+  file_name   = "Fold Change"
+)
+
+performExport2Excel(
+  results     = mycomparativeanalysis, 
+  folder_name = "Negative Mode", 
+  file_name   = "ANOVA or Kruskal-Wallis"
+)
+
+performExport2Excel(
+  results     = myvolcano, 
+  folder_name = "Negative Mode", 
+  file_name   = "Volcano plot data"
+)
+
+performExport2Excel(
+  results     = myauroc, 
+  folder_name = "Negative Mode", 
+  file_name   = "AUROC"
+)
+
+performExport2Excel(
+  results     = myregression, 
+  folder_name = "Negative Mode", 
+  file_name   = "Regression analysis"
+)
+```
