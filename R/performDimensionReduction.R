@@ -1,13 +1,65 @@
-# Function to perform PCA on QC data
+#' Function to Perform Dimension Reduction Techniques on the Processed Data
+#'
+#' @description
+#' This function performs dimension reduction techniques on the preprocessed data. These
+#' techniques include Principal Component Analysis (PCA). and
+#' Orthogonal Partial Least Squares-Discriminant Analysis (OPLS-DA). Techniques to be added
+#' are Partial Least Squares-Discriminant Analysis (PLS-DA) and
+#' sparse Partial Least Squares-Discriminant Analysis (sPLS-DA). Parameters will be ignored
+#' if they are not usable in the 'type' indicated.
+#'
+#' @param data List. This list must be a result from the `performPreprocessingPeakData` function.
+#' @param type String. The type of dimension reduction technique to perform. Choices are below. Future choices will include "PLS-DA" and "sPLS-DA".
+#'   \itemize{
+#'     \item "PCA": Perform Principal Component Analysis (PCA).
+#'     \item "OPLS-DA": Perform Orthogonal Partial Least Squares-Discriminant Analysis (OPLS-DA).
+#'     }
+#'     Defaults to "PCA".
+#' @param reduceWhat String. Controls what you want to perform the selected `type` on.
+#'   \itemize{
+#'     \item "QC": Perform the selected `type` on QC = Quality Control Samples.
+#'     \item "BS": Perform the selected `type` on BS = Biological Samples.
+#'     }
+#'     Defaults to "QC".
+#' @param arrangeLevels Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to `NULL` which sorts the groups in alphabetical order.
+#' @param screeWhat String. Determines what will be plotted in the scree plot (also called elbow plot).
+#'   \itemize{
+#'     \item "variance": Plot the variance explained.
+#'     \item "eigenvalue": Plot the eigen values.
+#'     }
+#'     Defaults to "variance".
+#' @param screeType String. Controls how the scree plot is plotted.
+#'   \itemize{
+#'     \item "bar": Uses bar plots.
+#'     \item "line": Uses line plots.
+#'     \item "both": Uses both bar and line plots.
+#'     }
+#'     Defaults to "both".
+#' @param screeLabs Boolean. If `TRUE` (default), adds labels.
+#' @param screeTitle String. The scree plot title. If `NULL` or empty (""), defaults to "Scree plot".
+#' @param screeXLab String. The scree plot x-axis label. Defaults to "Principal Components".
+#' @param screeYLab String. The scree plot y-axis label. Defaults to "% Variance Explained".
+#' @param scoresEllipse Boolean. If `TRUE` (default), adds an ellipse in the scores plot.
+#' @param scoresTitle String. The scores plot title.
+#' @param scoresLegend String. The title in the legend section of the scores plot. Defaults to `NULL` which means no legend title.
+#'
+#' @returns Returns a range of list of results from plots, data frames, etc.
+#' @export
+#'
+#' @examples
+#' performDimensionReduction(
+#'   data = data_from_performPreprocessingPeakData_function
+#' )
+
 performDimensionReduction <- function(
     data,
-    type          = "PCA", # c("PCA", "OPLS-DA") # To be added c("PLS-DA", "sPLS-DA")
-    reduceWhat    = "QC", # c("QC", "BS"): QC = Quality Control Samples; BS = Biological Samples
-    arrangeLevels = NULL, # Vector. How will the groups be ordered. Manual input. NULL to stick to default.
-    screeWhat     = "variance", # c("variance", "eigenvalue")
-    screeType     = "both", # "both" = c("bar", "line"). Can choose either
-    screeLabs     = TRUE, # logical
-    screeTitle    = "", # Scree plot title, NULL will output "Scree plot"
+    type          = "PCA",
+    reduceWhat    = "QC",
+    arrangeLevels = NULL,
+    screeWhat     = "variance",
+    screeType     = "both",
+    screeLabs     = TRUE,
+    screeTitle    = "",
     screeXLab     = "Principal Components",
     screeYLab     = "% Variance Explained",
     scoresEllipse = TRUE,
@@ -100,14 +152,12 @@ performDimensionReduction <- function(
     # Scree plot
     scree_plot <- factoextra::fviz_eig(pca_res, choice = screeWhat, geom = screeType,
                                        barfill = "steelblue", barcolor = "steelblue", linecolor = "black", ncp = 10,
-                                       addlabels = TRUE,
+                                       addlabels = screeLabs,
                                        hjust = 0,
                                        main = screeTitle, xlab = screeXLab, ylab = screeYLab,
                                        ggtheme = theme_minimal())
 
     dimensionReductionResults$ScreePlot <- scree_plot # Update list
-
-    # print(scree_plot)
 
     # Scores plot using ggplot2
     # Prepare data
@@ -137,8 +187,6 @@ performDimensionReduction <- function(
 
     dimensionReductionResults$ScoresPlot <- scores_plot # Update list
 
-    # print(scores_plot)
-
     # If PCA for Biological Samples
   } else if (type == "PCA" && reduceWhat == "BS") {
 
@@ -166,14 +214,12 @@ performDimensionReduction <- function(
     # Scree plot
     scree_plot <- factoextra::fviz_eig(pca_res, choice = screeWhat, geom = screeType,
                                        barfill = "steelblue", barcolor = "steelblue", linecolor = "black", ncp = 10,
-                                       addlabels = TRUE,
+                                       addlabels = screeLabs,
                                        hjust = 0,
                                        main = screeTitle, xlab = screeXLab, ylab = screeYLab,
                                        ggtheme = theme_minimal())
 
     dimensionReductionResults$ScreePlot <- scree_plot # Update list
-
-    # print(scree_plot)
 
     # Scores plot using ggplot2
     # Prepare data
@@ -208,8 +254,6 @@ performDimensionReduction <- function(
       theme(legend.position = "bottom")
 
     dimensionReductionResults$ScoresPlot <- scores_plot # Update list
-
-    # print(scores_plot)
 
     # If OPLS-DA
   } else if (type == "OPLS-DA") {
@@ -273,7 +317,6 @@ performDimensionReduction <- function(
         )
       }
     }
-
 
     # Loop through each pairwise group combination
     for (pair in group_combinations) {
@@ -402,29 +445,8 @@ performDimensionReduction <- function(
       }
     }
 
-
   }
 
   return(dimensionReductionResults)
 
 }
-
-
-
-
-# # Usage
-# dimreduct <- performDimensionReduction(
-#   data          = mydata,
-#   type          = "PCA", # c("PCA", "OPLS-DA") # To be added c("PLS-DA", "sPLS-DA")
-#   reduceWhat    = "BS", # c("QC", "BS"): QC = Quality Control Samples; BS = Biological Samples
-#   screeWhat     = "variance", # c("variance", "eigenvalue")
-#   screeType     = "both", # "both" = c("bar", "line"). Can choose either
-#   screeLabs     = TRUE, # logical
-#   screeTitle    = NULL, # Scree plot title
-#   screeXLab     = "Principal Components",
-#   screeYLab     = "% Variance Explained",
-#   scoresEllipse = TRUE,
-#   scoresTitle   = NULL,
-#   scoresLegend  = "Batch"
-#
-# )

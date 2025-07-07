@@ -3,14 +3,54 @@
 # Visualize before and after normalization
 
 # Combined Plot Function
+#' Plot Random Data Before and After Preprocessing
+#'
+#' @description
+#' This function will plot random samples or features the before and after data preprocessing.
+#'
+#'
+#' @param data List. This list must be a result from the `performPreprocessingPeakData` function.
+#' @param scaled String. Choose one below to plot one of the final results from the data preprocessing.
+#'   \itemize{
+#'     \item 'PCA:
+#'     \item 'OPLS-DA':
+#'     }
+#'     Defaults to "OPLS-DA".
+#' @param group_by String. Whether to plot the "Samples" or the "Features".
+#'   \itemize{
+#'     \item 'Sample:
+#'     \item 'Feature':
+#'     }
+#'     Defaults to "Sample".
+#'
+#' @returns A list of plots of the before and after data preprocessing.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' mplotBeforeAfter(
+#'   data = mydata2,
+#'   scaled = "OPLS-DA",
+#'   group_by = "Sample"
+#' )
+#' }
+
 plotBeforeAfter <- function(
     data,
-    scaled = "OPLS-DA", # c("PCA", "OPLS-DA")
-    # title_prefix,
-    group_by = "Sample" # c("Sample", "Feature")
+    scaled = "OPLS-DA",
+    group_by = "Sample"
 ) {
 
-  library(patchwork)
+  # Install/Load required package
+  if (!requireNamespace("patchwork", quietly = TRUE)) {
+    warning("Package 'patchwork' is required but not installed.")
+    message("Installing the package...")
+    install.packages('patchwork')
+    message("Loading the package...")
+    library(patchwork)
+  } else {
+    library(patchwork)
+  }
 
   # Parameter checks
   if (data$Metadata$FunctionOrigin != "performPreprocessingPeakData") {
@@ -23,10 +63,8 @@ plotBeforeAfter <- function(
     }
   }
 
-
   beforeAfterResults <- list() # Empty list to store results
   beforeAfterResults$Class <- "plotBeforeAfter" # Update list
-
 
   # Prepare Data for Visualization
 
@@ -44,8 +82,6 @@ plotBeforeAfter <- function(
 
   beforeAfterResults$data_before <- original # Update list
   beforeAfterResults$data_after <- transformed # Update list
-
-
 
   # Convert data to long format for ggplot2
   long_format <- function(data) {
@@ -106,28 +142,15 @@ plotBeforeAfter <- function(
     stop("The 'group_by' parameter must be 'Sample' or 'Feature'")
   }
 
-
   beforeAfterResults$plot_density_before <- p1 # Update list
   beforeAfterResults$plot_density_after  <- p2 # Update list
   beforeAfterResults$plot_box_before     <- p3 # Update list
   beforeAfterResults$plot_box_after      <- p4 # Update list
 
-
   # Combine plots
   all_plots <- (p1 | p2) / (p3 | p4)
 
-
   beforeAfterResults$plot_4in1           <- all_plots # Update list
-
 
   return(beforeAfterResults)
 }
-
-# Usage
-# myplotbeforeafter <- plotBeforeAfter(
-#   data = mydata2,
-#   scaled = "OPLS-DA",
-#   # title_prefix = "XDD",
-#   group_by = "Sample"
-# )
-
