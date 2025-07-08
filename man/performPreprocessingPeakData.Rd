@@ -50,7 +50,7 @@ performPreprocessingPeakData(
 \item{filterMaxRSD_by}{String. Choose below where to apply the RSD filtering in \code{filterMaxRSD}.
 \itemize{
 \item "SQC": Apply on Sample QCs only.
-\item "EQC: Apply on Extract QCs only.
+\item "EQC": Apply on Extract QCs only.
 \item "both": Apply on both.
 }
 Defaults to "EQC".}
@@ -60,7 +60,7 @@ Defaults to "EQC".}
 \item{dataNormalize}{String. Perform data normalization. Options are:
 \itemize{
 \item "none": No normalization.
-\item "SpecificGravity: Normalization using specific gravity, if provided. Otherwise, normalized by 'sum'.
+\item "SpecificGravity": Normalization using specific gravity, if provided. Otherwise, normalized by 'sum'.
 \item "sum": Normalization by sum.
 \item "median": Normalization by median.
 \item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach."
@@ -77,7 +77,7 @@ Defaults to 'SpecificGravity' is present, otherwise, normalization by 'sum' will
 \item{dataTransform}{String. A transformation method to transform the data after \code{dataNormalize}.
 \itemize{
 \item "none": No data transformation is done.
-\item "log10: Perform log10 transformation.
+\item "log10": Perform log10 transformation.
 \item "sqrt": Perform square root transformation.
 \item "cbrt": Perform cube root transformation.
 }}
@@ -85,7 +85,7 @@ Defaults to 'SpecificGravity' is present, otherwise, normalization by 'sum' will
 \item{dataScalePCA}{String. A data scaling done to the data after \code{dataTransform}. This data will be used later for Principal Component Analysis (PCA) "only".
 \itemize{
 \item "none": No data scaling is performed.
-\item "mean: Mean-centered only
+\item "mean": Mean-centered only
 \item "meanSD": Mean-centered and divided by SD of each feature
 \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
 }
@@ -94,7 +94,7 @@ Defaults to "meanSD".}
 \item{dataScaleOPLSDA}{String. A data scaling done to the data after \code{dataTransform}. This data will be used later for analyses "other than PCA", e.g., Orthogonal Partial Least Squares-Discriminant Analysis (OPLS-DA), among others.
 \itemize{
 \item "none": No data scaling is performed.
-\item "mean: Mean-centered only
+\item "mean": Mean-centered only
 \item "meanSD": Mean-centered and divided by SD of each feature
 \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
 }
@@ -114,7 +114,7 @@ and removal of known or identified outliers.
 \dontrun{
 # Using the default parameters
 mydata <- performPreprocessingPeakData(
- raw_data = org_data
+ raw_data = a_csv_file
 )
 }
 }

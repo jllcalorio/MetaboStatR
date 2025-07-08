@@ -27,7 +27,7 @@
 #' @param filterMaxRSD_by String. Choose below where to apply the RSD filtering in `filterMaxRSD`.
 #'   \itemize{
 #'     \item "SQC": Apply on Sample QCs only.
-#'     \item "EQC: Apply on Extract QCs only.
+#'     \item "EQC": Apply on Extract QCs only.
 #'     \item "both": Apply on both.
 #'     }
 #'     Defaults to "EQC".
@@ -35,7 +35,7 @@
 #' @param dataNormalize String. Perform data normalization. Options are:
 #'   \itemize{
 #'     \item "none": No normalization.
-#'     \item "SpecificGravity: Normalization using specific gravity, if provided. Otherwise, normalized by 'sum'.
+#'     \item "SpecificGravity": Normalization using specific gravity, if provided. Otherwise, normalized by 'sum'.
 #'     \item "sum": Normalization by sum.
 #'     \item "median": Normalization by median.
 #'     \item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach."
@@ -49,14 +49,14 @@
 #' @param dataTransform String. A transformation method to transform the data after `dataNormalize`.
 #'   \itemize{
 #'     \item "none": No data transformation is done.
-#'     \item "log10: Perform log10 transformation.
+#'     \item "log10": Perform log10 transformation.
 #'     \item "sqrt": Perform square root transformation.
 #'     \item "cbrt": Perform cube root transformation.
 #'     }
 #' @param dataScalePCA String. A data scaling done to the data after `dataTransform`. This data will be used later for Principal Component Analysis (PCA) "only".
 #'   \itemize{
 #'     \item "none": No data scaling is performed.
-#'     \item "mean: Mean-centered only
+#'     \item "mean": Mean-centered only
 #'     \item "meanSD": Mean-centered and divided by SD of each feature
 #'     \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
 #'     }
@@ -64,7 +64,7 @@
 #' @param dataScaleOPLSDA String. A data scaling done to the data after `dataTransform`. This data will be used later for analyses "other than PCA", e.g., Orthogonal Partial Least Squares-Discriminant Analysis (OPLS-DA), among others.
 #'   \itemize{
 #'     \item "none": No data scaling is performed.
-#'     \item "mean: Mean-centered only
+#'     \item "mean": Mean-centered only
 #'     \item "meanSD": Mean-centered and divided by SD of each feature
 #'     \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
 #'     }
@@ -78,7 +78,7 @@
 #' \dontrun{
 #' # Using the default parameters
 #' mydata <- performPreprocessingPeakData(
-#'  raw_data = org_data
+#'  raw_data = a_csv_file
 #' )
 #' }
 

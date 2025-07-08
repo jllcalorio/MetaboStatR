@@ -1,8 +1,3 @@
-# THIS IS NOT YET WORKING
-
-# Visualize before and after normalization
-
-# Combined Plot Function
 #' Plot Random Data Before and After Preprocessing
 #'
 #' @description
@@ -12,14 +7,14 @@
 #' @param data List. This list must be a result from the `performPreprocessingPeakData` function.
 #' @param scaled String. Choose one below to plot one of the final results from the data preprocessing.
 #'   \itemize{
-#'     \item 'PCA:
-#'     \item 'OPLS-DA':
+#'     \item 'PCA: Plots results from PCA.
+#'     \item 'OPLS-DA': Plots results from OPLS-DA.
 #'     }
 #'     Defaults to "OPLS-DA".
 #' @param group_by String. Whether to plot the "Samples" or the "Features".
 #'   \itemize{
-#'     \item 'Sample:
-#'     \item 'Feature':
+#'     \item 'Sample: Plots the samples.
+#'     \item 'Feature': Plots the features.
 #'     }
 #'     Defaults to "Sample".
 #'
@@ -29,8 +24,8 @@
 #' @examples
 #' \dontrun{
 #' mplotBeforeAfter(
-#'   data = mydata2,
-#'   scaled = "OPLS-DA",
+#'   data     = results_from_performPreprocessingPeakData_function,
+#'   scaled   = "OPLS-DA",
 #'   group_by = "Sample"
 #' )
 #' }
@@ -40,6 +35,13 @@ plotBeforeAfter <- function(
     scaled = "OPLS-DA",
     group_by = "Sample"
 ) {
+
+  # NOTE
+  # THIS IS NOT YET WORKING
+
+  # Visualize before and after normalization
+
+  # Combined Plot Function
 
   # Install/Load required package
   if (!requireNamespace("patchwork", quietly = TRUE)) {

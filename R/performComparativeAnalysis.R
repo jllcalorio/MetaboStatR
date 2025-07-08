@@ -1,9 +1,29 @@
-# # Function for statistical analysis
+#' Perform Statistical Analysis on a Preprocessed Data
+#'
+#' @description
+#' This function performs comparative analysis based on the characteristics of the data. This means that this function
+#' checks for the assumptions first before proceeding with the statistical analysis. The tests include t-tests and
+#' Analysis of Variance (ANOVA), and its types such as paired samples t-test, and their nonparametric counterparts such as
+#' Mann-Whitney U test, Kruskal-Wallis test, etc.
+#'
+#' @param data  List. This list must be a result from the `performPreprocessingPeakData` function.
+#' @param sort_p Boolean. If `TRUE` (default), sorts the adjusted p-values in ascending order.
+#' @param paired Boolean. If `TRUE`, this instructs the function that the data is paired, not independent. All p-values are adjusted using Bonferroni and Hochberg method.
+#' @param plot_iden_met Boolean. Setting this to `TRUE` will output a plot of the identified metabolites using `ggstatsplot` packagge, which means that statistical tests and p-values are displayed in the plot.
+#'
+#' @returns A list of data frames and plots, if requested.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' performComparativeAnalysis(data = results_from_performPreprocessingPeakData_function)
+#'}
+#'
 performComparativeAnalysis <- function(
     data,
     sort_p         = TRUE,
     paired         = FALSE,
-    plot_iden_met = NULL
+    plot_iden_met  = NULL
 ) {
 
   comparativeAnalysisResults       <- list()
@@ -95,31 +115,6 @@ performComparativeAnalysis <- function(
 
   comparativeAnalysisResults$results <- results
 
-  # # Plotting identified metabolites using ggstatsplot
-  # if (!is.null(plot_iden_met)) {
-  #   for (metabolite in plot_iden_met) {
-  #     if (metabolite %in% colnames(df)) {
-  #
-  #       # Set the test type dynamically
-  #       test_type <- ifelse(results$`Test used` == "Mann-Whitney U test" | results$`Test used` == "Kruskal-Wallis",
-  #                           "nonparametric", "parametric")
-  #
-  #       # Create the plot with dynamic test type
-  #       library(ggstatsplot)
-  #       p <- ggstatsplot::ggbetweenstats(
-  #         data = data.frame(x = groups, y = df[[metabolite]]),
-  #         x = "x", y = "y",
-  #         type = test_type,
-  #         pairwise = TRUE,
-  #         p.adjust.method = "BH",  # Apply Benjamini-Hochberg adjustment
-  #         title = paste("Comparative Analysis of", metabolite)
-  #       )
-  #     }
-  #   }
-  # }
-
-
-
   # Plotting identified metabolites using ggstatsplot
   if (!is.null(plot_iden_met)) {
     for (metabolite in plot_iden_met) {
@@ -145,7 +140,6 @@ performComparativeAnalysis <- function(
           title = paste0("Comparative Analysis of ", metabolite)
         )
 
-
         if(!is.null(plot_the_met)) {
 
           comparativeAnalysisResults$plots[[metabolite]] <- plot_the_met
@@ -153,30 +147,14 @@ performComparativeAnalysis <- function(
           print(plot_the_met)
 
         } else {
-
-
           next
         }
-
       } else {
         print(paste0("Metabolite '", metabolite, "' is not found in the preprocessed data (it has been removed in one of the data preprocessing steps). Boxplot is not generated."))
 
       }
-
-
-
     }
   }
 
-
-
   return(comparativeAnalysisResults)
 }
-
-
-
-
-# Usage
-# myComparative <- performComparativeAnalysis(mydata)
-
-# Add a "sort = TRUE" which sorts the results in descending order, i.e., lowest adjusted p-value first

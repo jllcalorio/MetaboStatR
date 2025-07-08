@@ -47,9 +47,11 @@
 #' @export
 #'
 #' @examples
+#' \dontrun{
 #' performDimensionReduction(
 #'   data = data_from_performPreprocessingPeakData_function
 #' )
+#' }
 
 performDimensionReduction <- function(
     data,

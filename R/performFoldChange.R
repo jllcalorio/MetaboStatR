@@ -1,14 +1,27 @@
-# Function for Fold Change Analysis
+#' Perform Fold Change Analysis on a Preprocessed Data
+#'
+#' @description
+#' This function performs fold change analysis on a preprocessed Data.
+#'
+#' @param data List. This list must be a result from the `performPreprocessingPeakData` function. It can also be from a data scaling technique.
+#' @param arrangeLevels Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to `NULL` which sorts the groups in alphabetical order.
+#' @param sortFC Boolean. If `TRUE` (default), sorts the fold changes in descending order.
+#'
+#' @returns A list of data frames.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' performFoldChange(data = results_from_performPreprocessingPeakData_function)
+#'}
+#'
 performFoldChange <- function(
     data,
     arrangeLevels = NULL,
-    sortFC        = TRUE # Sort fold changes in descending order
+    sortFC        = TRUE
 ) {
 
   # Add some data checks
-  # data must be from preprocessing
-  # data must be either scaled or preprocessed
-
   foldChangeAnalysisResults       <- list() # Empty list to store all results
   foldChangeAnalysisResults$Class <- "performFoldChange"  # Update list
 
@@ -16,7 +29,6 @@ performFoldChange <- function(
 
   # Filter out QC samples
   df     <- data$data_scaledOPLSDA[non_qc_indices, ]
-
 
   # Parameter-check for arrangeLevels
   if (is.null(arrangeLevels)) {
@@ -29,20 +41,17 @@ performFoldChange <- function(
     }
   }
 
-
   # Add a small constant to avoid division by zero or log(0)
   if (any(df <= 0)) {
     shift_value <- 1 - min(df) # find minimum then subtract it to find the max value to add to the smallest value
     df <- df + shift_value     # Add the shift value so the minimum value = 1, since log2 of <= 0 is -Inf and NaNs
   }
 
-
   foldChangeAnalysisResults$data_Min_is_1 <- df %>% as.data.frame()  # Update list
 
   # Get unique group combinations
   unique_groups      <- levels(groups)
   group_combinations <- combn(unique_groups, 2, simplify = FALSE)
-
 
   for (pair in group_combinations) {
 
@@ -81,7 +90,3 @@ performFoldChange <- function(
 
   return(foldChangeAnalysisResults)
 }
-
-
-# # Usage
-# # myfoldchange <- performFoldChange(mydata)

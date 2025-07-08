@@ -11,15 +11,15 @@ plotBeforeAfter(data, scaled = "OPLS-DA", group_by = "Sample")
 
 \item{scaled}{String. Choose one below to plot one of the final results from the data preprocessing.
 \itemize{
-\item 'PCA:
-\item 'OPLS-DA':
+\item 'PCA: Plots results from PCA.
+\item 'OPLS-DA': Plots results from OPLS-DA.
 }
 Defaults to "OPLS-DA".}
 
 \item{group_by}{String. Whether to plot the "Samples" or the "Features".
 \itemize{
-\item 'Sample:
-\item 'Feature':
+\item 'Sample: Plots the samples.
+\item 'Feature': Plots the features.
 }
 Defaults to "Sample".}
 }
@@ -32,8 +32,8 @@ This function will plot random samples or features the before and after data pre
 \examples{
 \dontrun{
 mplotBeforeAfter(
-  data = mydata2,
-  scaled = "OPLS-DA",
+  data     = results_from_performPreprocessingPeakData_function,
+  scaled   = "OPLS-DA",
   group_by = "Sample"
 )
 }

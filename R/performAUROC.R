@@ -1,16 +1,51 @@
-# Function for AUROC Analysis
+#' Perform Area Under the Receiver Operating Characteristic (AUROC)
+#'
+#' @description
+#' This function performs the AUROC analysis using the data from data processing, dimension-reduction,
+#' fold change analysis, and comparative analysis. Data will be automatically selected from those lists.
+#'
+#' @param data_PP List. This list must be a result from the `performPreprocessingPeakData` function.
+#' @param data_DR List. This list must be a result from the `performDimensionReduction` function, specifically from OPLS-DA.
+#' @param data_FC List. This list must be a result from the `performFoldChange` function.
+#' @param data_CA List. This list must be a result from the `performComparativeAnalysis` function.
+#' @param arrangeLevels Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to `NULL` which sorts the groups in alphabetical order. Suggests to be inputted (control, case1, case2) where case2 is worse than case1 e.g., Severe dengue than Non-severe dengue.
+#' @param VIPmin Numeric. Minimum VIP score to consider.
+#' @param fcUP Numeric. Minimum fold change to consider feature as up-regulated.
+#' @param fcDown Numeric. Maximum fold change to consider feature as down-regulated.
+#' @param adjpvalue Numeric. Defaults to 0.05. Defines the adjusted p-value threshold.
+#' @param direction Defines the direction in AUROC.
+#'   \itemize{
+#'     \item "auto": (This is not applied.)
+#'     \item ">": median of control < median of case
+#'     \item "<": median of control > median of case
+#'     \item "auto2": Dynamically change the direction. If `median of control < median of case`, then `>` will be applied, ottherwise, `<`.
+#'     }
+#'     Defaults to ">".
+#' @param top_n Numeric. Defines the features with the highest AUC. Defaults to plotting the top 5.
+#' @param plot_iden_met Boolean. If `TRUE`, plots the identified metabolites, one-by-one. Defaults to `NULL`.
+#'
+#' @returns Returns a list of results and plots if requested.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#'   data_PP = results_from_performPreprocessingPeakData_function,
+#'   data_DR = results_from_performDimensionReduction_function,
+#'   data_FC = results_from_performFoldChange_function,
+#'   data_CA = results_from_performComparativeAnalysis_function
+#' }
 performAUROC <- function(
-    data_PP,                      # Preprocessed results
-    data_DR,                      # Dimension-reduction results (from OPLS-DA)
-    data_FC,                      # Fold change analysis results
-    data_CA,                      # Comparative analysis results
-    arrangeLevels  = NULL,        # Vector. A user-input data. Defaults to NULL = unique groups. Suggests to be inputted (control, case1, case2) where case2 is worse than case1 e.g., Severe dengue than Non-severe dengue
-    VIPmin         = 1,           # Integer. Minimum VIP score to consider
-    fcUP           = 2,           # Integer. Minimum fold change to consider feature as up-regulated
-    fcDown         = 0.5,         # Integer. Maximum fold change to consider feature as down-regulated
-    adjpvalue      = 0.05,        # Decimal. Defaults to 0.05. adjusted p-value threshold
-    direction      = "auto2",     # Direction in AUROC. Defaults to ">". Choices are c("auto", ">", "<", "auto2")
-    top_n          = 5,           # plot top n, e.g., top 5 features with the highest AUC
+    data_PP,
+    data_DR,
+    data_FC,
+    data_CA,
+    arrangeLevels  = NULL,
+    VIPmin         = 1,
+    fcUP           = 2,
+    fcDown         = 0.5,
+    adjpvalue      = 0.05,
+    direction      = "auto2",
+    top_n          = 5,
     plot_iden_met = NULL
 ) {
 
@@ -97,10 +132,6 @@ performAUROC <- function(
       CI_Upper         = numeric(),
       stringsAsFactors = FALSE
     )
-
-
-
-
 
     for (feature_name in filtered_features) {
       if (!(feature_name %in% colnames(new_data))) next
@@ -189,9 +220,6 @@ performAUROC <- function(
         ),
         AUC = auc_val
       ))
-
-
-
     }
 
     auc_data       <- auc_data %>% dplyr::arrange(desc(AUC)) # Sort by AUC in ascending order
@@ -224,7 +252,6 @@ performAUROC <- function(
       # theme(legend.position = "bottom")
       theme(legend.position = c(0.8, 0.2))  # Adjust the coordinates
 
-
     ########################
     ########################
 
@@ -236,15 +263,6 @@ performAUROC <- function(
     auroc_results$plots[[group_name]]         <- combined_plot
 
     print(combined_plot)
-
-    # print(merged_data)
-
-
-
-
-
-
-
 
     # Plot identified metabolites one-by-one
     if (!is.null(plot_iden_met)) {
@@ -337,24 +355,7 @@ performAUROC <- function(
         }
       }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   }
 
   return(auroc_results)
 }
-

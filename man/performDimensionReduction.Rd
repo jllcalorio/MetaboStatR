@@ -80,7 +80,9 @@ sparse Partial Least Squares-Discriminant Analysis (sPLS-DA). Parameters will be
 if they are not usable in the 'type' indicated.
 }
 \examples{
+\dontrun{
 performDimensionReduction(
   data = data_from_performPreprocessingPeakData_function
 )
+}
 }

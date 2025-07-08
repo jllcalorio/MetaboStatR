@@ -1,10 +1,53 @@
-# Function for LASSO and Elastic Net
+#' Perform Least Absolute Shrinkage and Selection Operator (LASSO) and Elastic Net Regression
+#'
+#' @description
+#' This function performs either or both the LASSO and/or Elastic Net Regression. Both are regularization
+#' techniques used to prevent overfitting in linear regression models by adding penalty terms to the loss function.
+#' LASSO uses L1 regularization to shrink the coefficients of less important features towards zero, potentially eliminating them entirely.
+#' Elastic Net uses a combination of L1 and L2 regularization to address multicollinearity and perform feature selection simultaneously.
+#'
+#' @param data List. This list must be a result from the `performPreprocessingPeakData` function.
+#' @param method String or vector.
+#'   \itemize{
+#'     \item "lasso": Analyses data using LASSO only.
+#'     \item "enet": Analyses data using Elastic Net only.
+#'     \item c("lasso", "enet"): Analyses data using both LASSO Elastic Net. Needs to be a vector since 'Ridge Regression' will be added.
+#'     }
+#'     Defaults to "enet".
+#' @param train_percent Numeric. The percent to be used in the training data set. The remaining will be used in testing. Selection will be done in a random manner. For consistent results, suggests to use the `remember` parameter.
+#' @param ref String. The reference value. Defaults to the 1st level/category of the dependent variable if `NULL`.
+#' @param lambda String. The lambda value.
+#'   \itemize{
+#'     \item "1se"
+#'     \item "min"
+#'     }
+#'     Defaults to "1se" for fewer features, lower risk of over fitting.
+#' @param remember Numeric. This value will be used in the `set.seed(remember)` function.
+#'
+#' @returns Data frame of regression results containing coefficients and odds ratios.
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Perform the function
+#' myregression <- performRegression(
+#'   data     = results_from_performPreprocessingPeakData_function,
+#'   remember = 1234
+#'   )
+#'
+#' # View the results
+#' View(myregression[["LASSO_coefOddsRatio"]])
+#' View(myregression[["ElasticNet_coefOddsRatio"]])
+#' myregression[["LASSO_confusionMatrix"]]$overall[1]
+#' myregression[["ElasticNet_confusionMatrix"]]$overall[1]
+#' }
+#'
 performRegression <- function(
     data,
-    method        = c("lasso", "enet"),  # Choose either "lasso", "enet", or both
+    method        = "enet",
     train_percent = 80,   # percent of data to be used in training
-    ref           = NULL, # The reference value. Defaults to the 1st level/category of the dependent variable
-    lambda        = "1se", # The lambda value. c("1se", "min") Defaults to "1se" for fewer features, lower risk of over fitting
+    ref           = NULL, # The
+    lambda        = "1se", #
     remember      = NULL  # value used in set.seed
 ) {
 
@@ -30,7 +73,6 @@ performRegression <- function(
   } else { # if NULL
     stop("method must not be NULL. Must be either 'lasso', 'enet', or both.")
   }
-
 
   if (!is.null(remember)) { # perform set.seed if remember = any number
     if (is.numeric(remember)) {
@@ -58,15 +100,7 @@ performRegression <- function(
 
   num_groups      <- dplyr::n_distinct(groups)
 
-  # if (dplyr::n_distinct(groups) != 2) {
-  #   stop("There are more than 2 groups.")
-  # } else if (dplyr::n_distinct(groups) == 1) {
-  #   stop("There is only 1 group.")
-  # }
-
   df              <- data$data_scaledOPLSDA[non_qc_indices, ] # Extract non-QC data
-
-
 
   train_size      <- floor((train_percent / 100) * dim(df)[1])
   train_rows      <- sample(1:dim(df)[1], train_size)
@@ -92,149 +126,6 @@ performRegression <- function(
   regression_results$data_indep_test  <- x_test %>% as.data.frame() %>% `colnames<-`(NULL)
   regression_results$data_dep_train   <- y_train %>% as.data.frame() %>% `colnames<-`(NULL)
   regression_results$data_dep_test    <- y_test %>% as.data.frame() %>% `colnames<-`(NULL)
-  #
-  #
-  # #####################################################
-  # #####################################################
-  # #####################################################
-  #
-  # # LASSO Regression (alpha = 1)
-  # lasso_fit <- glmnet::cv.glmnet(
-  #   x            = x_train,
-  #   y            = y_train,
-  #   alpha        = 1, # must be 1 for LASSO
-  #   family       = ifelse(num_groups == 2, "binomial", "multinomial"),
-  #   type.measure = "class"
-  # )
-  #
-  # lasso_predicted <- predict(
-  #   lasso_fit,
-  #   # lambda.1se for fewer metabolites
-  #   # lambda.1se for more metabolites
-  #   s    = lasso_fit$lambda.1se,
-  #   newx = x_test, # Matrix of values which predictions are to be made
-  #   type = "class" # "class" for binomial/multinomial logistic regression
-  # ) # predictions return the class labels for classification
-  #
-  # # mean(y_test == lasso_predicted)
-  #
-  #
-  #
-  # confMat_lasso   <- caret::confusionMatrix(factor(y_test), factor(lasso_predicted, levels = c(ref,
-  #                                                                                              setdiff(unique(data$Metadata$Groups[non_qc_indices]), ref))))
-  # print("RESULTS FOR LASSO")
-  # # print(paste0("LASSO Accuracy: ", round(confMat_lasso$overall[[1]], 3),
-  # #              " (95% CI: ", round(confMat_lasso$overall[[3]], 3), "-", round(confMat_lasso$overall[[4]], 3), ")"))
-  #
-  #
-  # print(confMat_lasso)
-  #
-  # # coef_lasso      <- as.matrix(coef(lasso_fit, s = lasso_fit$lambda.1se)) %>%
-  # #   .[. != 0, , drop = FALSE]
-  #
-  # # Get coefficients
-  # coef_lasso      <- glmnet::coef.glmnet(lasso_fit, s = lasso_fit$lambda.1se)
-  # # Loop through the list (one per class/group)
-  # coef.OR_list <- if (num_groups == 2) {
-  #   coef_df <- as.data.frame(as.matrix(coef_lasso))
-  #   colnames(coef_df) <- "Coefficient"
-  #   coef_df$Feature <- rownames(coef_df)
-  #   coef_df <- coef_df[coef_df$Coefficient != 0, ]
-  #   coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-  #   list(coef_df[, c("Coefficient", "Odds Ratio")])
-  # } else {
-  #   lapply(coef_lasso, function(mat) {
-  #     coef_df <- as.data.frame(as.matrix(mat))
-  #     colnames(coef_df) <- "Coefficient"
-  #     coef_df$Feature <- rownames(coef_df)
-  #     coef_df <- coef_df[coef_df$Coefficient != 0, ]
-  #     coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-  #     coef_df[, c("Coefficient", "Odds Ratio")]
-  #   })
-  # }
-  #
-  # print(coef.OR_list)
-  # print(paste0("Reference: ", ifelse(is.null(ref), groups[1], ref)))
-  #
-  #
-  #
-  # regression_results$LASSO_fit              <- lasso_fit
-  # regression_results$LASSO_train_vs_predict <- data.frame(Training = y_test, Predicted = as.vector(lasso_predicted))
-  # regression_results$LASSO_confusionMatrix  <- confMat_lasso
-  # regression_results$LASSO_coefOddsRatio    <- coef.OR_list
-  #
-  # #####################################################
-  # #####################################################
-  # #####################################################
-  #
-  # # Elastic Net Regression (alpha = .5)
-  # enet_fit <- glmnet::cv.glmnet(
-  #   x            = x_train,
-  #   y            = y_train,
-  #   alpha        = .5, # must be between 0 and 1 for Elastic Net
-  #   family       = ifelse(num_groups == 2, "binomial", "multinomial"),
-  #   type.measure = "class"
-  # )
-  #
-  # enet_predicted <- predict(
-  #   enet_fit,
-  #   # lambda.1se for fewer metabolites
-  #   # lambda.1se for more metabolites
-  #   s    = enet_fit$lambda.1se,
-  #   newx = x_test, # Matrix of values which predictions are to be made
-  #   type = "class" # class for binomial/multinomial logistic regression
-  # ) # predictions return the class labels for classification
-  #
-  #
-  # # mean(y_test == enet_predicted)
-  #
-  # confMat_enet   <- caret::confusionMatrix(factor(y_test), factor(enet_predicted, levels = c(ref,
-  #                                                                                            setdiff(unique(data$Metadata$Groups[non_qc_indices]), ref))))
-  # print("########################################################")
-  # print("########################################################")
-  # print("########################################################")
-  #
-  # print("RESULTS FOR ELASTIC NET")
-  # # print(paste0("Elastic Net Accuracy: ", round(confMat_enet$overall[[1]], 3),
-  # #              " (95% CI: ", round(confMat_enet$overall[[3]], 3), "-", round(confMat_enet$overall[[4]], 3), ")"))
-  #
-  #
-  # print(confMat_enet)
-  #
-  # # Get coefficients
-  # coef_enet      <- glmnet::coef.glmnet(enet_fit, s = enet_fit$lambda.1se)
-  # # Loop through the list (one per class/group)
-  # coef.OR_list <- if (num_groups == 2) {
-  #   coef_df <- as.data.frame(as.matrix(coef_lasso))
-  #   colnames(coef_df) <- "Coefficient"
-  #   coef_df$Feature <- rownames(coef_df)
-  #   coef_df <- coef_df[coef_df$Coefficient != 0, ]
-  #   coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-  #   list(coef_df[, c("Coefficient", "Odds Ratio")])
-  # } else {
-  #   lapply(coef_lasso, function(mat) {
-  #     coef_df <- as.data.frame(as.matrix(mat))
-  #     colnames(coef_df) <- "Coefficient"
-  #     coef_df$Feature <- rownames(coef_df)
-  #     coef_df <- coef_df[coef_df$Coefficient != 0, ]
-  #     coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-  #     coef_df[, c("Coefficient", "Odds Ratio")]
-  #   })
-  # }
-  #
-  # print(coef.OR_list)
-  # print(paste0("Reference: ", ifelse(is.null(ref), groups[1], ref)))
-  #
-  # regression_results$ElasticNet_fit              <- enet_fit
-  # regression_results$ElasticNet_train_vs_predict <- data.frame(Training = y_test, Predicted = as.vector(enet_predicted))
-  # regression_results$ElasticNet_confusionMatrix  <- confMat_enet
-  # regression_results$ElasticNet_coefOddsRatio    <- coef.OR_list
-  #
-  # #####################################################
-  # #####################################################
-  # #####################################################
-  #
-  # return(regression_results)
 
   # Loop through the chosen methods
   for (method_type in method) {
@@ -281,43 +172,6 @@ performRegression <- function(
       coef.OR_list <- coef_df[, c("Coefficient", "Odds Ratio")]
 
     } else {
-      # lapply(coef_model, function(mat) {
-      #   coef_df              <- as.data.frame(as.matrix(mat))
-      #   colnames(coef_df)    <- "Coefficient"
-      #   coef_df$Feature      <- rownames(coef_df)
-      #   coef_df              <- coef_df[coef_df$Coefficient != 0, ]
-      #   coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-      #   coef_df[, c("Coefficient", "Odds Ratio")]
-      # })
-
-      # group_levels <- levels(groups)
-      #
-      # for (i in seq_along(coef_model)) {
-      #   coef_df              <- as.data.frame(as.matrix(coef_model[[i]]))
-      #   colnames(coef_df)    <- "Coefficient"
-      #   coef_df$Feature      <- rownames(coef_df)
-      #   coef_df              <- coef_df[coef_df$Coefficient != 0, ]
-      #   coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-      #
-      #   # Assign to separate data frames named by group level
-      #   assign(paste0("coef_OR_", group_levels[i]), coef_df[, c("Coefficient", "Odds Ratio")], envir = .GlobalEnv)
-      # }
-
-      # group_levels <- levels(groups)
-      #
-      # # Create a named list of data frames
-      # coef_list <- lapply(seq_along(coef_model), function(i) {
-      #   coef_df              <- as.data.frame(as.matrix(coef_model[[i]]))
-      #   colnames(coef_df)    <- "Coefficient"
-      #   coef_df$Feature      <- rownames(coef_df)
-      #   coef_df              <- coef_df[coef_df$Coefficient != 0, ]
-      #   coef_df$`Odds Ratio` <- exp(coef_df$Coefficient)
-      #   coef_df[, c("Coefficient", "Odds Ratio")]
-      # })
-
-      # names(coef_list) <- group_levels
-      # coef_list
-
       group_levels <- levels(groups)
 
       # Combine all group-specific coefficient tables into one data frame
@@ -332,9 +186,6 @@ performRegression <- function(
       })
 
       do.call(rbind, coef_list) %>% `rownames<-`(NULL)
-
-
-
     }
 
     print(coef.OR_list)
@@ -361,13 +212,4 @@ performRegression <- function(
   }
 
   return(regression_results)
-
-  # regression_results[[paste0(method_type, "_ConfMatrix")]] <- confMat$table # Confusion Matrix table
-  # regression_results[[paste0(method_type, "_OverallStatistics")]] <- confMat$overall # Overall statistics, from accuracy, CI, p-value etc.
-  # regression_results[[paste0(method_type, "_SensSpecsPosNeg")]] <- confMat$byClass # Sensitivity, Specificity, Neg/Pos Pred Value
-
-
 }
-
-# Usage # 1258
-# myregression <- performRegression(mydata, remember = 1258); View(myregression[["LASSO_coefOddsRatio"]]); View(myregression[["ElasticNet_coefOddsRatio"]]); myregression[["LASSO_confusionMatrix"]]$overall[1]; myregression[["ElasticNet_confusionMatrix"]]$overall[1]
