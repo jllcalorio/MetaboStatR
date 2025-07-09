@@ -7,8 +7,13 @@
 performPreprocessingPeakData(
   raw_data,
   filterMissing = 20,
+  filterMissing_includeQC = TRUE,
   denMissing = 5,
   driftBatchCorrection = TRUE,
+  spline_smooth_param = 0,
+  spline_smooth_param_limit = c(-1.5, 1.5),
+  log_scale = TRUE,
+  min_QC = 5,
   filterMaxRSD = 30,
   filterMaxRSD_by = c("SQC", "EQC", "both")[2],
   filterMaxVarSD = 10,
@@ -16,6 +21,7 @@ performPreprocessingPeakData(
     "groupPQN", "quantile")[2],
   refSample = NULL,
   groupSample = NULL,
+  reference_method = c("mean", "median")[1],
   dataTransform = c("none", "log10", "sqrt", "cbrt")[2],
   dataScalePCA = c("none", "mean", "meanSD", "meanSD2")[3],
   dataScaleOPLSDA = c("none", "mean", "meanSD", "meanSD2")[4],
@@ -25,37 +31,51 @@ performPreprocessingPeakData(
 \arguments{
 \item{raw_data}{A csv file having the following characteristics:
 \itemize{
-\item 1st row: Contains QC and the groups (with/out spaces).
-\item 2nd row: Contains SQC, EQC, and the same groups as in the 1st row.
-\item 3rd row: The sample names, ideally shortened versions to make it easier to view in visualizations, without spaces.
-\item 4th row: The batch numbers.
-\item 5th row: The injection sequence.
-\item 6th row: The osmolality values or specific gravity.
-\item Others below:
-\item Missing values are best to be left or encoded as 0s.
+\item 1st row name is "Group": Contains QC and the groups (with/out spaces).
+\item 2nd row name is "Group2": Contains SQC, EQC, and the same groups as in the 1st row. Essentially the same row, except that the QCs are specified.
+\item 3rd row name is "Sample": The sample names, ideally shortened versions to make it easier to view in visualizations; without spaces.
+\item 4th row name is "Batch": The batch numbers.
+\item 5th row name is "Injection": The injection sequence.
+\item 6th row name is "Osmolality": The osmolality values or specific gravity.
+\item Others requirement/s are:
+\item   The 1st 6 rows above must be present.
+\item   After the 6th row (Osmolality), the features possibly in a mass-to-charge ratio (m/z) and retention time. Example \verb{199.101@0.111} assuming you rounded off the decimal places to 3 decimal places (suggested for a cleaner output in visualizations).
+\item   If the Osmolality values or specific gravity are not present, leave the row blank except for the "Osmolality' word in the 1st column.
+\item   Missing values are best to be left blank or encoded as 0. Blanks and 0s are identified as NAs or missing values.
 }}
 
-\item{filterMissing}{Numeric. Minimum \%missing in all sample groups required to remove feature}
+\item{filterMissing}{Numeric. Minimum \%missing in all groups to remove feature.}
 
-\item{denMissing}{Numeric. A value to be used in missing value imputation. A denominator in 1/denMissing.}
+\item{filterMissing_includeQC}{Boolean. If \code{TRUE} (default), when implementing \code{filterMissing}, includes QC samples. Example: Feature1 is 20\% missing in QC, Group1, and Group2, then Feature1 will be removed. Set to \code{FALSE} if only the biological samples are required.}
 
-\item{driftBatchCorrection}{Boolean. If \code{TRUE} (default), perform multi-batch alignment to merge features artificially split between batches.}
+\item{denMissing}{Numeric. A value to be used in the denominator \code{1/denMissing} which will be used to replace missing values. The missing values in each feature will be replaced with the \code{1/denMissing} of the smallest positive value in a feature.}
 
-\item{filterMaxRSD}{Numeric. The threshold for the Relative Standard Deviation (RSD). Suggestions below. RSD is used to assess and filter out unreliable metabolites, ensuring that only high-quality, reproducible data are used for statistical and biological interpretation. In metabolomics, RSD is commonly calculated for each metabolite across Quality Control (QC) samples. QC samples are repeated pooled samples meant to assess the analytical precision and reproducibility of the instrument and the experimental setup.
+\item{driftBatchCorrection}{Boolean. If \code{TRUE} (default), perform Quality Control-Robust Spline Correction (QC-RSC) algorithm for signal drift and batch effect correction within/across a multi-batch direct infusion mass spectrometry (DIMS) and liquid chromatography mass spectrometry (LCMS) datasets. Read more on \code{?pmp::QCRSC}.}
+
+\item{spline_smooth_param}{Numeric. Only used in \code{driftBatchCorrection}. Spline smoothing parameter. Should be in the range 0 to 1. If set to 0 it will be estimated using leave-one-out cross-validation (to avoid overfitting).}
+
+\item{spline_smooth_param_limit}{Vector. Only used in \code{driftBatchCorrection}. A vector of format \code{c(num1, num2)} signifying the minimum and maximum values of \code{spline_smooth_param} when searching for an optimum.}
+
+\item{log_scale}{Boolean. Only used in \code{driftBatchCorrection}. If \code{TRUE} (default), performs the signal correction fit on the log scaled data.}
+
+\item{min_QC}{Numeric. Only used in \code{driftBatchCorrection}. The minimum number of measured quality control (QC) samples required for signal correction within feature per batch. For features where signal was measured in less QC samples than threshold signal correction won't be applied.}
+
+\item{filterMaxRSD}{Numeric. The threshold for the Relative Standard Deviation (RSD). Suggestions below. RSD is used to assess and filter out unreliable features, ensuring that only high-quality, reproducible data are used for statistical and biological interpretation. RSD is calculated for each feature across Quality Control (QC) samples. Features where QCs have RSD lesser than the desired \code{filterMaxRSD} threshold are removed.
 \itemize{
 \item 20: for LC-MS analyzed data
 \item 30: for GC-MS analyzed data
-}}
+}
+Defaults to 30.}
 
 \item{filterMaxRSD_by}{String. Choose below where to apply the RSD filtering in \code{filterMaxRSD}.
 \itemize{
 \item "SQC": Apply on Sample QCs only.
 \item "EQC": Apply on Extract QCs only.
-\item "both": Apply on both.
+\item "both": Apply on both, which means all SQCs and EQCs are taken as one data.
 }
 Defaults to "EQC".}
 
-\item{filterMaxVarSD}{Numeric. Remove nth percentile of features with the lowest variability (e.g., 10 for 10\%). Set to \code{NULL} to skip this filtering.}
+\item{filterMaxVarSD}{Numeric. Remove \code{nth} percentile (e.g., 10 for 10\%) of features with the lowest variability. This removes features where variation between the groups is very low. Set to \code{NULL} to skip this filtering.}
 
 \item{dataNormalize}{String. Perform data normalization. Options are:
 \itemize{
@@ -63,16 +83,23 @@ Defaults to "EQC".}
 \item "SpecificGravity": Normalization using specific gravity, if provided. Otherwise, normalized by 'sum'.
 \item "sum": Normalization by sum.
 \item "median": Normalization by median.
-\item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach."
-\item "PQN2": Probabilistic Quotient Normalization (PQN) using a reference sample indicated in \code{refSample} as the reference sample in the normalization."
+\item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach.
+\item "PQN2": Probabilistic Quotient Normalization (PQN) using a reference sample indicated in \code{refSample} as the reference sample in the normalization.
 \item "groupPQN": Group Probabilistic Quotient Normalization using pooled group indicated in \code{groupSample}.
-\item "quantile": Normalization by quantile,
+\item "quantile": Normalization by quantile. Read more on \code{?pmp::pqn_normalisation}.
 }
-Defaults to 'SpecificGravity' is present, otherwise, normalization by 'sum' will be performed.}
+Defaults to 'SpecificGravity' if present, otherwise, normalization by 'sum' will be performed.}
 
-\item{refSample}{String. The reference sample in the case of normalization method "PQN2". Must be in the samples, and is not part of "outliers" vector c("SQC", "EQC", "both")}
+\item{refSample}{String. The reference sample in the case of \code{dataNormalize = "PQN2"}. Must be in the samples, and is not part of "outliers" vector c("SQC", "EQC", "both")}
 
-\item{groupSample}{String. Used in the \code{groupPQN.} NULL if not "groupPQN". Default to "EQC" if "groupPQN" Other choice is "SQC".}
+\item{groupSample}{String. Used only if \code{dataNormalize = "groupPQN"}. Ignored if not otherwise. Default to "EQC" if "groupPQN". Other choice is "SQC".}
+
+\item{reference_method}{String. Only used if \code{dataNormalize = "quantile"}. The method used to compute the reference from the QC samples. Choices are below. Read more on \code{?pmp::pqn_normalisation}.
+\itemize{
+\item "mean"
+\item "median"
+}
+Defaults to "mean".}
 
 \item{dataTransform}{String. A transformation method to transform the data after \code{dataNormalize}.
 \itemize{
@@ -80,7 +107,8 @@ Defaults to 'SpecificGravity' is present, otherwise, normalization by 'sum' will
 \item "log10": Perform log10 transformation.
 \item "sqrt": Perform square root transformation.
 \item "cbrt": Perform cube root transformation.
-}}
+}
+Defaults to "log10".}
 
 \item{dataScalePCA}{String. A data scaling done to the data after \code{dataTransform}. This data will be used later for Principal Component Analysis (PCA) "only".
 \itemize{
@@ -100,20 +128,20 @@ Defaults to "meanSD".}
 }
 Defaults to "meanSD2".}
 
-\item{outliers}{A vector of biological samples and/or QC that are considered as outliers. Example format is "c('Sample1', 'Sample2', 'QC1', 'QC2', ...)".}
+\item{outliers}{A vector of biological samples and/or QC that are considered as outliers. Example format is "c('Sample1', 'Sample2', 'QC1', 'QC2', ...)". Defaults to \code{NULL}.}
 }
 \value{
 A list of results from all of the tests done (e.g., batch-corrected data, normalized data, transformed data, scaled data, etc.)
 }
 \description{
-This function performs data preprocessing techniques in bioinformatics to prepare the data for downstream analysis.
-The data preprocessing includes data filtration, drift correction, data normalization, transformation, scaling,
-and removal of known or identified outliers.
+This function performs data preprocessing techniques to prepare the data for downstream analysis.
+The data preprocessing includes data filtration, missing value imputation, drift and batch correction,
+data normalization, transformation, scaling, and removal of known, identified, or perceived outliers.
 }
 \examples{
 \dontrun{
 # Using the default parameters
-mydata <- performPreprocessingPeakData(
+performPreprocessingPeakData(
  raw_data = a_csv_file
 )
 }
