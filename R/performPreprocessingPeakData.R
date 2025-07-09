@@ -1,51 +1,66 @@
 #' Perform Data Preprocessing on a Raw Data (csv)
 #'
 #' @description
-#' This function performs data preprocessing techniques in bioinformatics to prepare the data for downstream analysis.
-#' The data preprocessing includes data filtration, drift correction, data normalization, transformation, scaling,
-#' and removal of known or identified outliers.
+#' This function performs data preprocessing techniques to prepare the data for downstream analysis.
+#' The data preprocessing includes data filtration, missing value imputation, drift and batch correction,
+#' data normalization, transformation, scaling, and removal of known, identified, or perceived outliers.
 #'
 #' @param raw_data A csv file having the following characteristics:
 #'   \itemize{
-#'     \item 1st row: Contains QC and the groups (with/out spaces).
-#'     \item 2nd row: Contains SQC, EQC, and the same groups as in the 1st row.
-#'     \item 3rd row: The sample names, ideally shortened versions to make it easier to view in visualizations, without spaces.
-#'     \item 4th row: The batch numbers.
-#'     \item 5th row: The injection sequence.
-#'     \item 6th row: The osmolality values or specific gravity.
-#'     \item Others below:
-#'     \item Missing values are best to be left or encoded as 0s.
+#'     \item 1st row name is "Group": Contains QC and the groups (with/out spaces).
+#'     \item 2nd row name is "Group2": Contains SQC, EQC, and the same groups as in the 1st row. Essentially the same row, except that the QCs are specified.
+#'     \item 3rd row name is "Sample": The sample names, ideally shortened versions to make it easier to view in visualizations; without spaces.
+#'     \item 4th row name is "Batch": The batch numbers.
+#'     \item 5th row name is "Injection": The injection sequence.
+#'     \item 6th row name is "Osmolality": The osmolality values or specific gravity.
+#'     \item Others requirement/s are:
+#'     \item   The 1st 6 rows above must be present.
+#'     \item   After the 6th row (Osmolality), the features possibly in a mass-to-charge ratio (m/z) and retention time. Example `199.101@0.111` assuming you rounded off the decimal places to 3 decimal places (suggested for a cleaner output in visualizations).
+#'     \item   If the Osmolality values or specific gravity are not present, leave the row blank except for the "Osmolality' word in the 1st column.
+#'     \item   Missing values are best to be left blank or encoded as 0. Blanks and 0s are identified as NAs or missing values.
 #'     }
-#' @param filterMissing Numeric. Minimum %missing in all sample groups required to remove feature
-#' @param denMissing Numeric. A value to be used in missing value imputation. A denominator in 1/denMissing.
-#' @param driftBatchCorrection Boolean. If `TRUE` (default), perform multi-batch alignment to merge features artificially split between batches.
-#' @param filterMaxRSD Numeric. The threshold for the Relative Standard Deviation (RSD). Suggestions below. RSD is used to assess and filter out unreliable metabolites, ensuring that only high-quality, reproducible data are used for statistical and biological interpretation. In metabolomics, RSD is commonly calculated for each metabolite across Quality Control (QC) samples. QC samples are repeated pooled samples meant to assess the analytical precision and reproducibility of the instrument and the experimental setup.
+#' @param filterMissing Numeric. Minimum %missing in all groups to remove feature.
+#' @param filterMissing_includeQC Boolean. If `TRUE` (default), when implementing `filterMissing`, includes QC samples. Example: Feature1 is 20% missing in QC, Group1, and Group2, then Feature1 will be removed. Set to `FALSE` if only the biological samples are required.
+#' @param denMissing Numeric. A value to be used in the denominator `1/denMissing` which will be used to replace missing values. The missing values in each feature will be replaced with the `1/denMissing` of the smallest positive value in a feature.
+#' @param driftBatchCorrection Boolean. If `TRUE` (default), perform Quality Control-Robust Spline Correction (QC-RSC) algorithm for signal drift and batch effect correction within/across a multi-batch direct infusion mass spectrometry (DIMS) and liquid chromatography mass spectrometry (LCMS) datasets. Read more on `?pmp::QCRSC`.
+#' @param spline_smooth_param Numeric. Only used in `driftBatchCorrection`. Spline smoothing parameter. Should be in the range 0 to 1. If set to 0 it will be estimated using leave-one-out cross-validation (to avoid overfitting).
+#' @param spline_smooth_param_limit Vector. Only used in `driftBatchCorrection`. A vector of format `c(num1, num2)` signifying the minimum and maximum values of `spline_smooth_param` when searching for an optimum.
+#' @param log_scale Boolean. Only used in `driftBatchCorrection`. If `TRUE` (default), performs the signal correction fit on the log scaled data.
+#' @param min_QC Numeric. Only used in `driftBatchCorrection`. The minimum number of measured quality control (QC) samples required for signal correction within feature per batch. For features where signal was measured in less QC samples than threshold signal correction won't be applied.
+#' @param filterMaxRSD Numeric. The threshold for the Relative Standard Deviation (RSD). Suggestions below. RSD is used to assess and filter out unreliable features, ensuring that only high-quality, reproducible data are used for statistical and biological interpretation. RSD is calculated for each feature across Quality Control (QC) samples. Features where QCs have RSD lesser than the desired `filterMaxRSD` threshold are removed.
 #'   \itemize{
 #'     \item 20: for LC-MS analyzed data
 #'     \item 30: for GC-MS analyzed data
 #'     }
+#'     Defaults to 30.
 #' @param filterMaxRSD_by String. Choose below where to apply the RSD filtering in `filterMaxRSD`.
 #'   \itemize{
 #'     \item "SQC": Apply on Sample QCs only.
 #'     \item "EQC": Apply on Extract QCs only.
-#'     \item "both": Apply on both.
+#'     \item "both": Apply on both, which means all SQCs and EQCs are taken as one data.
 #'     }
 #'     Defaults to "EQC".
-#' @param filterMaxVarSD Numeric. Remove nth percentile of features with the lowest variability (e.g., 10 for 10%). Set to `NULL` to skip this filtering.
+#' @param filterMaxVarSD Numeric. Remove `nth` percentile (e.g., 10 for 10%) of features with the lowest variability. This removes features where variation between the groups is very low. Set to `NULL` to skip this filtering.
 #' @param dataNormalize String. Perform data normalization. Options are:
 #'   \itemize{
 #'     \item "none": No normalization.
 #'     \item "SpecificGravity": Normalization using specific gravity, if provided. Otherwise, normalized by 'sum'.
 #'     \item "sum": Normalization by sum.
 #'     \item "median": Normalization by median.
-#'     \item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach."
-#'     \item "PQN2": Probabilistic Quotient Normalization (PQN) using a reference sample indicated in `refSample` as the reference sample in the normalization."
+#'     \item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach.
+#'     \item "PQN2": Probabilistic Quotient Normalization (PQN) using a reference sample indicated in `refSample` as the reference sample in the normalization.
 #'     \item "groupPQN": Group Probabilistic Quotient Normalization using pooled group indicated in `groupSample`.
-#'     \item "quantile": Normalization by quantile,
+#'     \item "quantile": Normalization by quantile. Read more on `?pmp::pqn_normalisation`.
 #'     }
-#'     Defaults to 'SpecificGravity' is present, otherwise, normalization by 'sum' will be performed.
-#' @param refSample String. The reference sample in the case of normalization method "PQN2". Must be in the samples, and is not part of "outliers" vector c("SQC", "EQC", "both")
-#' @param groupSample String. Used in the `groupPQN.` NULL if not "groupPQN". Default to "EQC" if "groupPQN" Other choice is "SQC".
+#'     Defaults to 'SpecificGravity' if present, otherwise, normalization by 'sum' will be performed.
+#' @param refSample String. The reference sample in the case of `dataNormalize = "PQN2"`. Must be in the samples, and is not part of "outliers" vector c("SQC", "EQC", "both")
+#' @param groupSample String. Used only if `dataNormalize = "groupPQN"`. Ignored if not otherwise. Default to "EQC" if "groupPQN". Other choice is "SQC".
+#' @param reference_method String. Only used if `dataNormalize = "quantile"`. The method used to compute the reference from the QC samples. Choices are below. Read more on `?pmp::pqn_normalisation`.
+#'   \itemize{
+#'     \item "mean"
+#'     \item "median"
+#'     }
+#'     Defaults to "mean".
 #' @param dataTransform String. A transformation method to transform the data after `dataNormalize`.
 #'   \itemize{
 #'     \item "none": No data transformation is done.
@@ -53,6 +68,7 @@
 #'     \item "sqrt": Perform square root transformation.
 #'     \item "cbrt": Perform cube root transformation.
 #'     }
+#'     Defaults to "log10".
 #' @param dataScalePCA String. A data scaling done to the data after `dataTransform`. This data will be used later for Principal Component Analysis (PCA) "only".
 #'   \itemize{
 #'     \item "none": No data scaling is performed.
@@ -69,7 +85,7 @@
 #'     \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
 #'     }
 #'     Defaults to "meanSD2".
-#' @param outliers A vector of biological samples and/or QC that are considered as outliers. Example format is "c('Sample1', 'Sample2', 'QC1', 'QC2', ...)".
+#' @param outliers A vector of biological samples and/or QC that are considered as outliers. Example format is "c('Sample1', 'Sample2', 'QC1', 'QC2', ...)". Defaults to `NULL`.
 #'
 #' @returns A list of results from all of the tests done (e.g., batch-corrected data, normalized data, transformed data, scaled data, etc.)
 #' @export
@@ -77,26 +93,32 @@
 #' @examples
 #' \dontrun{
 #' # Using the default parameters
-#' mydata <- performPreprocessingPeakData(
+#' performPreprocessingPeakData(
 #'  raw_data = a_csv_file
 #' )
 #' }
 
 performPreprocessingPeakData <- function(
     raw_data,
-    filterMissing        = 20,
-    denMissing           = 5,
-    driftBatchCorrection = TRUE,
-    filterMaxRSD         = 30,
-    filterMaxRSD_by      = c("SQC", "EQC", "both")[2],
-    filterMaxVarSD       = 10,
-    dataNormalize        = c("none", "SpecificGravity", "sum", "median", "PQN1", "PQN2", "groupPQN", "quantile")[2],
-    refSample            = NULL,
-    groupSample          = NULL,
-    dataTransform        = c("none", "log10", "sqrt", "cbrt")[2],
-    dataScalePCA         = c("none", "mean", "meanSD", "meanSD2")[3],
-    dataScaleOPLSDA      = c("none", "mean", "meanSD", "meanSD2")[4],
-    outliers             = NULL
+    filterMissing             = 20,
+    filterMissing_includeQC   = TRUE,
+    denMissing                = 5,
+    driftBatchCorrection      = TRUE,
+    spline_smooth_param       = 0,
+    spline_smooth_param_limit = c(-1.5, 1.5),
+    log_scale                 = TRUE,
+    min_QC                    = 5,
+    filterMaxRSD              = 30,
+    filterMaxRSD_by           = c("SQC", "EQC", "both")[2],
+    filterMaxVarSD            = 10,
+    dataNormalize             = c("none", "SpecificGravity", "sum", "median", "PQN1", "PQN2", "groupPQN", "quantile")[2],
+    refSample                 = NULL,
+    groupSample               = NULL,
+    reference_method          = c("mean", "median")[1],
+    dataTransform             = c("none", "log10", "sqrt", "cbrt")[2],
+    dataScalePCA              = c("none", "mean", "meanSD", "meanSD2")[3],
+    dataScaleOPLSDA           = c("none", "mean", "meanSD", "meanSD2")[4],
+    outliers                  = NULL
 ) {
 
 
@@ -203,7 +225,7 @@ performPreprocessingPeakData <- function(
   # If all parameters are okay, proceed with code.
 
   message("This might take more or less 5 minutes due to a large number of data preprocessing methods included in this function. This is especially true when there is more than 1 modelName in driftCorrection.")
-  message("While processing, R cannot be used (unless maybe there is another separate session). Feel free to do other tasks.")
+  message("While processing, RStudio maybe be used (unless maybe there is another separate session/window open). Feel free to sip a coffee!")
   flush.console() # Force message to be displayed
 
   listPreprocessed            <- list() # Create empty list to contain all results. A list can store any data (vector, list, data frame, matrix, etc.)
@@ -221,10 +243,10 @@ performPreprocessingPeakData <- function(
     dplyr::mutate(Injection = as.numeric(Injection)) %>% # Convert to numeric so it will be arranged correctly in the line below
     dplyr::arrange(Injection) # Sort by injection, needed in drift-correction
 
-  # Data checking steps. Stop if these columns to not exist in the data
+  # Data checking steps. Stop if these columns do not exist in the data
   required_headers <- c("Group", "Group2", "Sample", "Batch", "Injection", "Osmolality")
   if (!all(required_headers %in% colnames(data_transposed))) {
-    stop("⚠️ Data preprocessing is halted. Data does not contain the expected column names (Group, Group2, Sample, Batch, Injection, Osmolality). Check for typo or the 1st 6 rows in your csv file.")
+    stop("⚠️ Data preprocessing is halted. The raw data does not contain the expected column names (Group, Group2, Sample, Batch, Injection, Osmolality). Check for typo or the 1st 6 rows in your csv file.")
   }
 
   # Remove user-defined outliers
@@ -290,12 +312,42 @@ performPreprocessingPeakData <- function(
   df          <- `rownames<-`(df, data_transposed$Sample) # set row names to sample IDs
   df[]        <- lapply(df, as.numeric) # Convert to numeric
   df          <- df[, colSums(is.na(df)) < nrow(df)] # Remove features if all NAs
-  df          <- df[, colMeans(is.na(df)) <= filterMissing/100] # Remove columns with more than a specified percentage of missing values
 
+  # In filterMissing
+  if (filterMissing_includeQC) {
+    # Compute missing percentages per group (excluding QC)
+    missing_by_group <- sapply(listPreprocessed$Metadata$Groups[listPreprocessed$Metadata$Groups != "QC"], function(g) {
+      rows <- listPreprocessed$Metadata$Groups == g
+      colMeans(is.na(df[rows, , drop = FALSE]))
+    }) %>% t() %>% .[!duplicated(.), ] # Transpose and remove duplicates
+
+    # Remove feature if missingness is >= threshold in all groups
+    remove_features <- apply(missing_by_group, 2, function(x) all(x >= filterMissing / 100))
+
+    # Filter the dataset
+    df <- df[, !remove_features]
+  } else if (filterMissing_includeQC == FALSE) {
+    # Compute missing percentages per group (excluding QC)
+    missing_by_group <- sapply(listPreprocessed$Metadata$Groups, function(g) {
+      rows <- listPreprocessed$Metadata$Groups == g
+      colMeans(is.na(df[rows, , drop = FALSE]))
+    }) %>% t() %>% .[!duplicated(.), ] # Transpose and remove duplicates
+
+    # Remove feature if missingness is >= threshold in all groups
+    remove_features <- apply(missing_by_group, 2, function(x) all(x >= filterMissing / 100))
+
+    # Filter the dataset
+    df <- df[, !remove_features]
+  } else {
+    stop("The parameter 'filterMissing_includeQC' must be either TRUE or FALSE.")
+  }
+
+  # Update results
   listPreprocessed$Dimensions        <- rbind(listPreprocessed$Dimensions, c("Missing Percent Greater", dim(df)[1], dim(df)[2])) # Update list
   listPreprocessed$MissingValues     <- num_na
 
-  df[]        <- lapply(df, function(x) { # Replace missing values with a fraction of the minimum positive value
+  # Replace missing values with a fraction of the minimum positive value
+  df[]        <- lapply(df, function(x) {
     min_val   <- base::min(x[x > 0], na.rm = TRUE)
     base::replace(
       x      = x,                   # vector
@@ -315,19 +367,17 @@ performPreprocessingPeakData <- function(
   flush.console()
 
   if (isTRUE(driftBatchCorrection)) {
-
-
     df <- pmp::QCRSC(
       df       = df,
       order    = listPreprocessed$Metadata$InjectionSequence,
       batch    = listPreprocessed$Metadata$Batches,
       # Replace SQC and EQC with QC and back to vector
       classes  = data.frame(Groups = listPreprocessed$Metadata$Groups) %>% dplyr::mutate(Groups = ifelse(Groups %in% c("SQC", "EQC"), "QC", Groups)) %>% as.vector() %>% .$Groups,
-      spar     = 0, # 0 Spline smoothing parameter. Should be in the range 0 to 1. If set to 0 it will be estimated using leave-one-out cross-validation.
-      log      = TRUE,
-      minQC    = 5,
+      spar     = spline_smooth_param, # 0 Spline smoothing parameter. Should be in the range 0 to 1. If set to 0 it will be estimated using leave-one-out cross-validation.
+      log      = log_scale,
+      minQC    = min_QC,
       qc_label = "QC",
-      spar_lim = c(-1.5, 1.5)
+      spar_lim = spline_smooth_param_limit
     ) %>% t() %>% as.data.frame()
 
     listPreprocessed$data_driftBatchCorrected <- df # Update list
@@ -360,7 +410,6 @@ performPreprocessingPeakData <- function(
 
   message("✅ Employed: 2nd Replacing of missing values introduced by drift- and batch-correction.")
   flush.console()
-
 
   # Plot before and after drift- and batch-correction using 6 random features
   beforeAfterBatchDrift <- pmp::sbc_plot(
@@ -417,7 +466,7 @@ performPreprocessingPeakData <- function(
   # Filter features with low variability across samples
   if (!is.null(filterMaxVarSD)) {
     df <- df %>%
-      { .[, apply(., 2, sd) > quantile(apply(., 2, sd), filterMaxVarSD/100)] } # 0.10 = 10% standard deviation
+      { .[, apply(., 2, sd) > quantile(apply(., 2, sd), filterMaxVarSD/100)] } # e.g. 0.10 = 10% standard deviation
 
     listPreprocessed$data_filteredMaxVarSD <- df # Update list
 
@@ -443,7 +492,7 @@ performPreprocessingPeakData <- function(
   } else if (dataNormalize == "SpecificGravity") {
     sg_values <- as.numeric(data_transposed$Osmolality)
     if (all(is.na(sg_values))) {
-      message("⚠️ SpecificGravity values are all NA. Normalization by Sum will be performed instead.")
+      message("⚠️ SpecificGravity or (Osmolality values) values are all NA. Normalization by Sum will be performed instead.")
       sample_sums <- rowSums(df, na.rm = TRUE)
       df <- df / sample_sums
     } else {
@@ -520,10 +569,8 @@ performPreprocessingPeakData <- function(
       ref_mean    = NULL,
       qc_frac     = 0,
       sample_frac = 0,
-      ref_method  = "mean"
+      ref_method  = reference_method
     ) %>% t() %>% as.data.frame()
-
-
 
     message("✅ Employed: Quantile Normalization.")
 
@@ -577,7 +624,7 @@ performPreprocessingPeakData <- function(
   flush.console()
 
   # Apply scaling for PCA
-  scaled_pca_data <- scale_data(data = df, method = dataScalePCA) #%>% t() %>% as.data.frame()
+  scaled_pca_data <- scale_data(data = df, method = dataScalePCA)
 
   # Update list
   if (is.null(dataScalePCA)) {
@@ -593,7 +640,7 @@ performPreprocessingPeakData <- function(
   flush.console()
 
   # Apply scaling for OPLS-DA
-  scaled_oplsda_data <- scale_data(data = df, method = dataScaleOPLSDA) #%>% t() %>% as.data.frame()
+  scaled_oplsda_data <- scale_data(data = df, method = dataScaleOPLSDA)
 
   # Update list
   if (is.null(dataScaleOPLSDA)) {
@@ -605,7 +652,7 @@ performPreprocessingPeakData <- function(
   message(paste0(ifelse(is.null(dataScaleOPLSDA), "❌  NOT Employed: ", "✅ Employed: "), "Data scaling for OPLS-DA."))
   flush.console()
 
-  message("✅✅✅ Data preprocessing is complete. The data is now ready for any statistical analysis based on selected data preprocessing techniques.")
+  message("✅✅✅ Data preprocessing is complete. The data is now ready for any statistical analysis based on selected data preprocessing techniques!")
   flush.console()
 
   return(listPreprocessed)
