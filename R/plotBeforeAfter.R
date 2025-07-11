@@ -17,6 +17,8 @@
 #'     \item 'Feature': Plots the features.
 #'     }
 #'     Defaults to "Sample".
+#' @param n_random_samples Numeric. The number of random 'samples' to be created with box plots. If `NULL`, plots all. Defaults to 30, or the samples exceeds 30.
+#' @param n_random_features Numeric. he number of random 'features' to be created with box plots. If `NULL`, plots all. Defaults to 30, or the features exceeds 30.
 #'
 #' @returns A list of plots of the before and after data preprocessing.
 #' @export
@@ -33,7 +35,9 @@
 plotBeforeAfter <- function(
     data,
     scaled = "OPLS-DA",
-    group_by = "Sample"
+    group_by = "Sample",
+    n_random_samples = 30,
+    n_random_features = 30
 ) {
 
   # NOTE
@@ -61,7 +65,7 @@ plotBeforeAfter <- function(
 
   if (!is.null(scaled)) {
     if (scaled != "PCA" && scaled != "OPLS-DA") {
-      stop("scaled: Must be either PCA or OPLS-DA")
+      stop("The 'scaled' parameter must be either PCA or OPLS-DA.")
     }
   }
 
@@ -98,6 +102,7 @@ plotBeforeAfter <- function(
   trans_long <- long_format(transformed)
 
   # Density plots
+
   p1 <- ggplot(orig_long, aes(x = Value)) +
     geom_density(alpha = 0.5) +
     # ggtitle(paste0(title_prefix, " - Before Scaling")) +
@@ -111,21 +116,39 @@ plotBeforeAfter <- function(
     theme(legend.position = "none")
 
   # Boxplots
+
+  random_samples <- sample(rownames(transformed), n_random_samples)  # Select random features
+
   if (group_by == "Sample") {
-    p3 <- ggplot(orig_long, aes(x = Sample, y = Value)) +
+
+    # update random_features if n_random_features is NULL or not
+    if (!is.null(n_random_samples)) {
+      random_samples <- sample(colnames(transformed), n_random_samples)  # Select random features
+    } else {
+      random_samples <- dim(transformed)[1]
+    }
+
+    p3 <- ggplot(orig_long %>% filter(Sample %in% random_samples),
+                 aes(x = Sample, y = Value)) +
       geom_boxplot() +
       # ggtitle(paste0(title_prefix, " - Boxplot Before Scaling")) +
       theme_minimal() +
       coord_flip()
 
-    p4 <- ggplot(trans_long, aes(x = Sample, y = Value)) +
+    p4 <- ggplot(trans_long %>% filter(Sample %in% random_samples),
+                 aes(x = Sample, y = Value)) +
       geom_boxplot() +
       # ggtitle(paste0(title_prefix, " - Boxplot After Scaling")) +
       theme_minimal() +
       coord_flip()
   } else if (group_by == "Feature") {
 
-    random_features <- sample(colnames(transformed), 30)  # Select random 30 features
+    # update random_features if n_random_features is NULL or not
+    if (!is.null(n_random_features)) {
+      random_features <- sample(colnames(transformed), n_random_features)  # Select random features
+    } else {
+      random_features <- dim(transformed)[2]
+    }
 
     p3 <- ggplot(orig_long %>% filter(Feature %in% random_features),
                  aes(x = Feature, y = Value)) +
