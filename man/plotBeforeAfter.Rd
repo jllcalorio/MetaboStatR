@@ -4,7 +4,13 @@
 \alias{plotBeforeAfter}
 \title{Plot Random Data Before and After Preprocessing}
 \usage{
-plotBeforeAfter(data, scaled = "OPLS-DA", group_by = "Sample")
+plotBeforeAfter(
+  data,
+  scaled = "OPLS-DA",
+  group_by = "Sample",
+  n_random_samples = 30,
+  n_random_features = 30
+)
 }
 \arguments{
 \item{data}{List. This list must be a result from the \code{performPreprocessingPeakData} function.}
@@ -22,6 +28,10 @@ Defaults to "OPLS-DA".}
 \item 'Feature': Plots the features.
 }
 Defaults to "Sample".}
+
+\item{n_random_samples}{Numeric. The number of random 'samples' to be created with box plots. If \code{NULL}, plots all. Defaults to 30, or the samples exceeds 30.}
+
+\item{n_random_features}{Numeric. he number of random 'features' to be created with box plots. If \code{NULL}, plots all. Defaults to 30, or the features exceeds 30.}
 }
 \value{
 A list of plots of the before and after data preprocessing.
