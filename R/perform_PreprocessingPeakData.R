@@ -1,924 +1,1048 @@
-#' Perform Data Preprocessing on a Quality-Checked Data
+#' Comprehensive Data Preprocessing Pipeline
 #'
 #' @description
-#' This function performs data preprocessing techniques to prepare the data for downstream analysis.
-#' The data preprocessing includes data filtration, missing value imputation, drift and batch correction,
-#' transformation, scaling, data normalization, and removal of known, identified, or perceived outliers.
+#' Performs a complete data preprocessing workflow to prepare raw data for
+#' downstream analysis. This function applies preprocessing steps sequentially
+#' in the order specified by the parameters to ensure optimal data quality
+#' and analytical readiness.
 #'
-#' @param raw_data List. A quality-checked data from the `performDataQualityCheck` function.
-#' @param filterMissing Numeric. Minimum %missing in all groups to remove feature.
-#' @param filterMissing_by_group Boolean. Determines if the `filterMissing` should detect group missingness before removal of features/metabolites. Example, if there are 2 groups (Group1, and Group2), and say `filterMissing`% is present in Group1 and the same percentage also applies to Group2 in Feature1, then Feature1 is removed. Set to `FALSE` to ignore grouping.
-#' @param filterMissing_includeQC Boolean. If `TRUE` (default), when implementing `filterMissing`, includes QC samples. Example: Feature1 is 20% missing in QC, Group1, then Feature1 will be removed. Set to `FALSE` if only the biological samples are required.
-#' @param denMissing Numeric. A value to be used in the denominator `1/denMissing` which will be used to replace missing values. The missing values in each feature will be replaced with the `1/denMissing` of the smallest positive value in a feature.
-#' @param driftBatchCorrection Boolean. If `TRUE` (default), perform Quality Control-Robust Spline Correction (QC-RSC) algorithm for signal drift and batch effect correction within/across a multi-batch direct infusion mass spectrometry (DIMS) and liquid chromatography mass spectrometry (LCMS) datasets. Read more on `?pmp::QCRSC`.
-#' @param spline_smooth_param Numeric. Only used in `driftBatchCorrection`. Spline smoothing parameter. Should be in the range 0 to 1. If set to 0 it will be estimated using leave-one-out cross-validation (to avoid overfitting).
-#' @param spline_smooth_param_limit Vector. Only used in `driftBatchCorrection`. A vector of format `c(num1, num2)` signifying the minimum and maximum values of `spline_smooth_param` when searching for an optimum.
-#' @param log_scale Boolean. Only used in `driftBatchCorrection`. If `TRUE` (default), performs the signal correction fit on the log scaled data.
-#' @param min_QC Numeric. Only used in `driftBatchCorrection`. The minimum number of measured quality control (QC) samples required for signal correction within feature per batch. For features where signal was measured in less QC samples than threshold signal correction won't be applied.
-#' @param dataNormalize String. Perform data normalization. Options are:
-#'   \itemize{
-#'     \item "none": No normalization.
-#'     \item "DilutionMarker": Normalization using values provided in the "DilutionMarker" row. Otherwise, normalized by 'sum'.
-#'     \item "sum": Normalization by sum.
-#'     \item "median": Normalization by median.
-#'     \item "PQN1": Probabilistic Quotient Normalization (PQN) according to global median approach.
-#'     \item "PQN2": Probabilistic Quotient Normalization (PQN) using a reference sample indicated in `refSample` as the reference sample in the normalization.
-#'     \item "groupPQN": Group Probabilistic Quotient Normalization using pooled group indicated in `groupSample`.
-#'     \item "quantile": Normalization by quantile. Read more on `?pmp::pqn_normalisation`.
-#'     }
-#'     Defaults to 'DilutionMarker' if present, otherwise, normalization by 'sum' will be performed.
-#' @param refSample String. The reference sample in the case of `dataNormalize = "PQN2"`. Must be in the samples, and is not part of "outliers" vector c("SQC", "EQC", "both").
-#' @param groupSample String. Used only if `dataNormalize = "groupPQN"`. Ignored if not otherwise. Default to "EQC" if "groupPQN". Other choice is "SQC".
-#' @param reference_method String. Only used if `dataNormalize = "quantile"`. The method used to compute the reference from the QC samples. Choices are below. Read more on `?pmp::pqn_normalisation`.
-#'   \itemize{
-#'     \item "mean"
-#'     \item "median"
-#'     }
-#'     Defaults to "mean".
-#' @param dataTransform String. A transformation method to transform the data after `dataNormalize`.
-#'   \itemize{
-#'     \item "none": No data transformation is done.
-#'     \item "log2": Perform log2 transformation.
-#'     \item "log10": Perform log10 transformation.
-#'     \item "sqrt": Perform square root transformation.
-#'     \item "cbrt": Perform cube root transformation.
-#'     \item "vsn": Perform Variance Stabilizing Normalization. Read more on `?vsn::justvsn`. In its description, "The method uses a robust variant of the maximum-likelihood estimator for an additive-multiplicative error model and affine calibration. The model incorporates data calibration step (a.k.a. normalization), a model for the dependence of the variance on the mean intensity and a variance stabilizing data transformation. Differences between transformed intensities are analogous to "normalized log-ratios". However, in contrast to the latter, their variance is independent of the mean, and they are usually more sensitive and specific in detecting differential transcription."
-#'     }
-#'     Defaults to "log10".
-#' @param dataScalePCA String. A data scaling done to the data after `dataTransform`. This data will be used later for Principal Component Analysis (PCA) "only".
-#'   \itemize{
-#'     \item "none": No data scaling is performed.
-#'     \item "mean": Mean-centered only
-#'     \item "meanSD": Mean-centered and divided by SD of each feature
-#'     \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
-#'     }
-#'     Defaults to "meanSD".
-#' @param dataScaleOPLSDA String. A data scaling done to the data after `dataTransform`. This data will be used later for analyses "other than PCA", e.g., Orthogonal Partial Least Squares-Discriminant Analysis (OPLS-DA), among others.
-#'   \itemize{
-#'     \item "none": No data scaling is performed.
-#'     \item "mean": Mean-centered only.
-#'     \item "meanSD": Mean-centered and divided by SD of each feature.
-#'     \item "meanSD2": Mean-centered and divided by the square root of SD of each feature. Also called pareto-scaling.
-#'     }
-#'     Defaults to "meanSD2".
-#' @param filterMaxRSD Numeric. The threshold for the Relative Standard Deviation (RSD). Suggestions below. RSD is used to assess and filter out unreliable features, ensuring that only high-quality, reproducible data are used for statistical and biological interpretation. RSD is calculated for each feature across Quality Control (QC) samples. Features where QCs have RSD greater than the desired `filterMaxRSD` threshold are removed.
-#'   \itemize{
-#'     \item 20: for LC-MS analyzed data. Remove feature if RSD of QC >= 20%.
-#'     \item 30: for GC-MS analyzed data. Remove feature if RSD of QC >= 30%.
-#'     }
-#'     Defaults to 30.
-#' @param filterMaxRSD_by String. Choose below where to apply the RSD filtering in `filterMaxRSD`.
-#'   \itemize{
-#'     \item "SQC": Apply on Sample QCs only.
-#'     \item "EQC": Apply on Extract QCs only.
-#'     \item "both": Apply on both, which means all SQCs and EQCs are taken as one data. This is also the option when SQC and EQC are not present.
-#'     }
-#'     Defaults to "EQC".
-#' @param filterMaxVarSD Numeric. Remove `nth` percentile (e.g., 10 for 10%) of features with the lowest variability. This removes features where variation between the groups is very low. Set to `NULL` to skip this filtering.
-#' @param outliers A vector of biological samples and/or QC that are considered as outliers. Example format is "c('Sample1', 'Sample2', 'QC1', 'QC2', ...)". Defaults to `NULL`.
+#' @param raw_data List. Quality-checked data from the `perform_DataQualityCheck` function.
+#' @param outliers Vector. Biological samples and/or QC samples considered as outliers. Example format: `c('Sample1', 'Sample2', 'QC1', 'QC2', ...)`. Defaults to `NULL`.
+#' @param filterMissing Numeric. Minimum percentage of missing values across all groups required to remove a feature.
+#' @param filterMissing_by_group Boolean. Determines whether `filterMissing` should assess group-specific missingness before feature removal.
+#' @param filterMissing_includeQC Boolean. If `FALSE` (default), QC samples are excluded when implementing `filterMissing`.
+#' @param denMissing Numeric. Denominator value used in the fraction `1/denMissing` to replace missing values.
+#' @param driftBatchCorrection Boolean. If `TRUE` (default), perform QC-RSC algorithm for signal drift and batch effect correction.
+#' @param spline_smooth_param Numeric. Spline smoothing parameter ranging from 0 to 1.
+#' @param spline_smooth_param_limit Vector. A vector of format `c(min, max)` for spline parameter limits.
+#' @param log_scale Boolean. If `TRUE` (default), performs signal correction fit on log-scaled data.
+#' @param min_QC Numeric. Minimum number of QC samples required for signal correction per batch.
+#' @param dataNormalize String. Data normalization method.
+#' @param refSample String. Reference sample for `dataNormalize = "PQN2"`.
+#' @param groupSample String. Used only if `dataNormalize = "groupPQN"`.
+#' @param reference_method String. Method for computing reference from QC samples.
+#' @param dataTransform String. Data transformation method applied after `dataNormalize`.
+#' @param dataScalePCA String. Data scaling for PCA analysis.
+#' @param dataScalePLS String. Data scaling for PLS analysis.
+#' @param filterMaxRSD Numeric. Threshold for RSD filtering.
+#' @param filterMaxRSD_by String. Which QC samples to use for RSD filtering.
+#' @param filterMaxVarSD Numeric. Remove nth percentile of features with lowest variability.
+#' @param verbose Logical. Whether to print detailed progress messages. Default TRUE.
 #'
-#' @returns A list of results from all of the tests done (e.g., batch-corrected data, normalized data, transformed data, scaled data, etc.).
+#' @returns A list containing results from all preprocessing steps.
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#' # Using the default parameters
-#' performPreprocessingPeakData(
-#'  raw_data = a_csv_file
-#' )
-#' }
 
-performPreprocessingPeakData <- function(
+perform_PreprocessingPeakData <- function(
     raw_data,
+    outliers                  = NULL,
     filterMissing             = 20,
     filterMissing_by_group    = TRUE,
-    filterMissing_includeQC   = TRUE,
+    filterMissing_includeQC   = FALSE,
     denMissing                = 5,
     driftBatchCorrection      = TRUE,
     spline_smooth_param       = 0,
     spline_smooth_param_limit = c(-1.5, 1.5),
     log_scale                 = TRUE,
     min_QC                    = 5,
-    dataTransform             = c("none", "log2", "log10", "sqrt", "cbrt", "vsn")[3],
-    dataScalePCA              = c("none", "mean", "meanSD", "meanSD2")[3],
-    dataScaleOPLSDA           = c("none", "mean", "meanSD", "meanSD2")[4],
-    dataNormalize             = c("none", "DilutionMarker", "sum", "median", "PQN1", "PQN2", "groupPQN", "quantile")[2],
+    dataNormalize             = "Normalization",
     refSample                 = NULL,
     groupSample               = NULL,
-    reference_method          = c("mean", "median")[1],
+    reference_method          = "mean",
+    dataTransform             = "vsn",
+    dataScalePCA              = "meanSD",
+    dataScalePLS              = "mean2SD",
     filterMaxRSD              = 30,
-    filterMaxRSD_by           = c("SQC", "EQC", "both")[2],
+    filterMaxRSD_by           = "EQC",
     filterMaxVarSD            = 10,
-    outliers                  = NULL
+    verbose                   = TRUE
 ) {
 
-  # Check if data is from "performDataQualityCheck" function
-  if (raw_data$FunctionOrigin != "performDataQualityCheck") {
-    stop("The 'raw_data' must be from the 'performDataQualityCheck' function for quality check.")
+  # Add timestamp start
+  listPreprocessed$ProcessingTimestampStart <- Sys.time()
+
+  # Helper function for conditional messaging
+  msg <- function(...) if (verbose) message(...)
+
+  # Helper function for safe numeric conversion
+  safe_numeric <- function(x) {
+    tryCatch(as.numeric(x),
+             warning = function(w) {
+               warning(paste("Warning in numeric conversion:", w$message))
+               as.numeric(x)
+             },
+             error = function(e) {
+               stop(paste("Error in numeric conversion:", e$message))
+             })
   }
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # --------------------------------------- Parameter Validation (start) ----------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # Helper function for memory-efficient operations
+  gc_if_needed <- function() {
+    if (gc.time()[1] %% 10 == 0) invisible(gc())
+  }
 
-  check_parameters <- function(filterMissing,
-                               filterMissing_by_group,
-                               filterMissing_includeQC,
-                               denMissing,
-                               driftBatchCorrection,
-                               spline_smooth_param,
-                               spline_smooth_param_limit,
-                               log_scale,
-                               min_QC,
-                               dataNormalize,
-                               refSample,
-                               groupSample,
-                               reference_method,
-                               dataTransform,
-                               dataScalePCA,
-                               dataScaleOPLSDA,
-                               filterMaxRSD,
-                               filterMaxRSD_by,
-                               filterMaxVarSD,
-                               outliers) {
+  utils::flush.console()
+
+  msg("Starting data preprocessing pipeline...")
+  msg("Validating input data structure...")
+
+  # Enhanced input validation
+  if (!is.list(raw_data)) {
+    stop("'raw_data' must be a list object from perform_DataQualityCheck function.")
+  }
+
+  if (!"FunctionOrigin" %in% names(raw_data)) {
+    stop("'raw_data' is missing 'FunctionOrigin' field. Ensure data comes from perform_DataQualityCheck function.")
+  }
+
+  if (raw_data$FunctionOrigin != "perform_DataQualityCheck") {
+    stop("The 'raw_data' must be from the 'perform_DataQualityCheck' function for quality check.")
+  }
+
+  if (!"raw_data" %in% names(raw_data)) {
+    stop("'raw_data' is missing the actual data field 'raw_data'.")
+  }
+
+  msg("Input validation passed.")
+
+  # Optimized parameter validation function
+  validate_parameters <- function() {
     errors <- character()
 
-    # Check numeric parameters
-    if (!is.numeric(filterMissing)) {
-      errors <- c(errors, "filterMissing: Not numeric.")
-    } else if (filterMissing < 1 || filterMissing > 100) {
-      errors <- c(errors, "filterMissing: Out of range [1, 100].")
-    }
+    # Numeric parameter validation with optimized checks
+    numeric_params <- list(
+      filterMissing = list(value = filterMissing, range = c(1, 100)),
+      denMissing = list(value = denMissing, range = c(1, 100)),
+      spline_smooth_param = list(value = spline_smooth_param, range = c(0, 1)),
+      min_QC = list(value = min_QC, range = c(1, Inf)),
+      filterMaxRSD = list(value = filterMaxRSD, range = c(1, 100)),
+      filterMaxVarSD = list(value = filterMaxVarSD, range = c(1, 100))
+    )
 
-    if (!is.logical(filterMissing_by_group)) {
-      errors <- c(errors, "filterMissing_by_group: Must be logical.")
-    }
+    for (param_name in names(numeric_params)) {
+      param_info <- numeric_params[[param_name]]
+      value <- param_info$value
 
-    if (!is.logical(filterMissing_includeQC)) {
-      errors <- c(errors, "filterMissing_includeQC: Must be logical.")
-    }
+      # Skip validation for NULL values where appropriate
+      if (is.null(value) && param_name %in% c("filterMaxRSD", "filterMaxVarSD")) {
+        next
+      }
 
-    if (!is.numeric(denMissing)) {
-      errors <- c(errors, "denMissing: Not numeric.")
-    } else if (denMissing < 1 || denMissing > 100) {
-      errors <- c(errors, "denMissing: Out of range [1, 100].")
-    }
-
-    if (!is.logical(driftBatchCorrection)) {
-      errors <- c(errors, "driftBatchCorrection: Must be logical.")
-    }
-
-    if (!is.numeric(spline_smooth_param)) {
-      errors <- c(errors, "spline_smooth_param: Not numeric.")
-    } else if (spline_smooth_param < 0 || spline_smooth_param > 1) {
-      errors <- c(errors, "spline_smooth_param: Out of range [0, 1].")
-    }
-
-    if (!is.numeric(spline_smooth_param_limit)) {
-      errors <- c(errors, "spline_smooth_param_limit: Not numeric. Must be a numeric vector of 2 values (e.g., `c(-1.5, 1.5)` (default)).")
-    }
-
-    if (!is.logical(log_scale)) {
-      errors <- c(errors, "log_scale: Must be logical.")
-    }
-
-    if (!is.numeric(min_QC)) {
-      errors <- c(errors, "min_QC: Not numeric.")
-    }
-
-    if (!is.null(filterMaxRSD)) {
-      if (!is.numeric(filterMaxRSD)) {
-        errors <- c(errors, "filterMaxRSD: Not numeric. Suggestions are 20 (20% for LC-MS analyzed) and 30 (30% for GC-MS analyzed).")
-      } else if (filterMaxRSD < 1 || filterMaxRSD > 100) {
-        errors <- c(errors, "filterMaxRSD: Out of range [1, 100].")
+      if (!is.numeric(value) || length(value) != 1) {
+        errors <- c(errors, paste(param_name, ": Must be a single numeric value."))
+      } else if (value < param_info$range[1] || value > param_info$range[2]) {
+        errors <- c(errors, paste(param_name, ": Out of valid range [",
+                                  param_info$range[1], ",", param_info$range[2], "]."))
       }
     }
 
-    if (!is.null(filterMaxVarSD)) {
-      if (!is.numeric(filterMaxVarSD)) {
-        errors <- c(errors, "filterMaxVarSD: Not numeric. Must be between 1 and 100.")
-      } else if (filterMaxVarSD < 1 || filterMaxVarSD > 100) {
-        errors <- c(errors, "filterMaxVarSD: Out of range [1, 100].")
+    # Logical parameter validation
+    logical_params <- c("filterMissing_by_group", "filterMissing_includeQC",
+                        "driftBatchCorrection", "log_scale")
+    for (param_name in logical_params) {
+      if (!is.logical(get(param_name))) {
+        errors <- c(errors, paste(param_name, ": Must be logical (TRUE/FALSE)."))
       }
     }
 
-    # Check choices
-    allowed_scales <- c("none", "DilutionMarker", "sum", "median", "PQN1", "PQN2", "groupPQN", "quantile")
-    if (!is.logical(dataNormalize)) {
-      if (!(dataNormalize %in% allowed_scales)) {
-        errors <- c(errors, "dataNormalize: Must either be none, DilutionMarker, sum, median, PQN1, PQN2, groupPQN, quantile.")
+    # Choice parameter validation
+    choice_params <- list(
+      dataNormalize = c("none", "Normalization", "sum", "median", "PQN1", "PQN2", "groupPQN", "quantile"),
+      dataTransform = c("none", "log2", "log10", "sqrt", "cbrt", "vsn"),
+      dataScalePCA = c("none", "mean", "meanSD", "mean2SD"),
+      dataScalePLS = c("none", "mean", "meanSD", "mean2SD"),
+      reference_method = c("mean", "median"),
+      filterMaxRSD_by = c("SQC", "EQC", "both")
+    )
+
+    for (param_name in names(choice_params)) {
+      value <- get(param_name)
+      if (is.null(value) || length(value) != 1 || !value %in% choice_params[[param_name]]) {
+        errors <- c(errors, paste(param_name, ": Must be one of:",
+                                  paste(choice_params[[param_name]], collapse = ", ")))
       }
     }
 
-    allowed_scales <- c("none", "log2", "log10", "sqrt", "cbrt", "vsn")
-    if (!is.logical(dataTransform)) {
-      if (!(dataTransform %in% allowed_scales)) {
-        errors <- c(errors, "dataTransform: Must either be none, log2, log10, sqrt, cbrt, vsn. log2 and log10 applies log2 and log10 transformation, sqrt and cbrt applies square root and cube root transformation, and vsn applies variance stabilizing normalization.")
-      }
+    # Vector parameter validation
+    if (!is.null(outliers) && !is.vector(outliers)) {
+      errors <- c(errors, "outliers: Must be a vector of sample identifiers.")
     }
 
-    allowed_scales <- c("none", "mean", "meanSD", "meanSD2")
-    if (!is.null(dataScalePCA)) {
-      if (!(dataScalePCA %in% allowed_scales)) {
-        errors <- c(errors, "dataScalePCA: Must be either NULL, mean, meanSD, or meanSD2.")
-      }
-    }
-    if (!is.null(dataScaleOPLSDA)) {
-      if (!(dataScaleOPLSDA %in% allowed_scales)) {
-        errors <- c(errors, "dataScaleOPLSDA: Must be either NULL, mean, meanSD, or meanSD2.")
-      }
+    if (!is.numeric(spline_smooth_param_limit) || length(spline_smooth_param_limit) != 2) {
+      errors <- c(errors, "spline_smooth_param_limit: Must be a numeric vector of length 2.")
     }
 
-    allowed_scales <- c("mean", "median")
-    if (!is.null(reference_method)) {
-      if (!(reference_method %in% allowed_scales)) {
-        errors <- c(errors, "reference_method: Must be either mean or median.")
-      }
+    if (length(errors) > 0) {
+      stop("Parameter validation failed:\n", paste(errors, collapse = "\n"))
     }
 
-    allowed_scales <- c("SQC", "EQC", "both")
-    if (!is.null(filterMaxRSD_by)) {
-      if (!(filterMaxRSD_by %in% allowed_scales)) {
-        errors <- c(errors, "filterMaxRSD_by: Must be either SQC, EQC, or both.")
-      }
-    }
-
-    # Check vector
-    if (!is.null(outliers)) {
-      if (!is.vector(outliers)) {
-        errors <- c(errors, "outliers: Must be a vector of biological samples and QC samples identified as outliers.")
-      }
-    }
-
-    return(errors)
+    msg("Parameter validation passed.")
   }
 
-  # Validate parameters
-  validation_errors <- check_parameters(filterMissing,
-                                        filterMissing_by_group,
-                                        filterMissing_includeQC,
-                                        denMissing,
-                                        driftBatchCorrection,
-                                        spline_smooth_param,
-                                        spline_smooth_param_limit,
-                                        log_scale,
-                                        min_QC,
-                                        dataNormalize,
-                                        refSample,
-                                        groupSample,
-                                        reference_method,
-                                        dataTransform,
-                                        dataScalePCA,
-                                        dataScaleOPLSDA,
-                                        filterMaxRSD,
-                                        filterMaxRSD_by,
-                                        filterMaxVarSD,
-                                        outliers)
+  validate_parameters()
 
-  if (length(validation_errors) > 0) {
-    stop(paste("Invalid parameters:", paste(validation_errors,
-                                            collapse = "\n")))
-  }
+  msg("Initializing preprocessing pipeline...")
 
-  # If all parameters are okay, proceed with code.
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ---------------------------------------- Parameter Validation (end) -----------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  listPreprocessed            <- base::list() # Create empty list to contain all results. A list can store any data (vector, list, data frame, matrix, etc.)
-  # This is to make sure that the other analysis uses results only from this function
-  listPreprocessed$FunctionOrigin <- "performPreprocessingPeakData"
-  df_dimensions               <- base::data.frame()
-  listPreprocessed$Dimensions <- base::rbind(df_dimensions, c("preprocessing_step", "n_samples", "n_features")) %>% `colnames<-`(NULL) # Update list
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------------ Load the data (start) --------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # # Transpose the data
-  data_transposed <- as.data.frame(t(raw_data$raw_data)) %>%
-    setNames(as.character(.[1, ])) %>% .[-1, ] %>% # Set column names from 1st row (features, etc.)
-    # Arrange by Injection Sequence
-    dplyr::mutate(Injection = as.numeric(Injection)) %>% # Convert to numeric so it will be arranged correctly in the line below
-    dplyr::arrange(Injection) # Sort by injection, needed in drift-correction
-
-  message("This might take more or less 5 minutes due to a large number of data preprocessing methods included in this function. This is especially true when there is more than 1 modelName in driftCorrection.")
-  message("While processing, RStudio maybe be used (unless maybe there is another separate session/window open). Feel free to sip a coffee!")
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------------ Remove outliers (start) ------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # Remove user-defined outliers
-  if (!is.null(outliers)) {
-
-    message("The 'outliers' parameter is not empty, removing biological and/or QC samples.")
-
-    # Identify which outliers are present in the 'Sample' column
-    removed_outliers   <- outliers[ outliers %in% data_transposed$Sample]
-    not_found_outliers <- outliers[!outliers %in% data_transposed$Sample]
-
-    # Filter outliers
-    data_transposed <- data_transposed %>%
-      dplyr::filter(!(Sample %in% outliers))
-
-    # Print them
-    cat("✅ Removed outliers:\n")
-    print(removed_outliers %>% data.frame() %>% `colnames<-`(NULL))
-
-    cat("\n⚠️ Outliers NOT found in the 'Sample' column (probably already removed):\n")
-    print(not_found_outliers %>% data.frame() %>% `colnames<-`(NULL))
-
-    listPreprocessed$outliers             <- outliers # Update list
-    listPreprocessed$outliers_removed     <- removed_outliers # Update list
-    listPreprocessed$outliers_not_removed <- not_found_outliers # Update list
-
-  } else {
-    removed_outliers <- data.frame() # Quickest way to solve as of the moment
-  }
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------------ Remove outliers (end) --------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # List of metadata indices
-  indices_qc      <- data_transposed$Group %in% c("SQC", "EQC", "QC")    # Indices for all QCs
-  indices_non_qc  <- !indices_qc                                         # Indices for Biological Samples, i.e., non-QC
-
-  # Saving metadata in 1 data frame
-  listPreprocessed$Metadata <- data.frame(
-    Samples             = data_transposed$Sample,
-    SubjectID           = data_transposed$SubjectID %>% as.numeric(),
-    TechnicalReplicates = data_transposed$Replicate,
-    Group               = data_transposed$Group,
-    Group_              = gsub("SQC|EQC", "QC", data_transposed$Group), # This is another set of groups where SQC and EQC are converted to QC (for plot purposes only)
-    Batches             = data_transposed$Batch %>% as.numeric(),
-    InjectionSequence   = data_transposed$Injection %>% as.numeric(),
-    DilutionMarker      = data_transposed$DilutionMarker %>% as.numeric(),
-    Response            = data_transposed$Response %>% as.numeric()
+  # Initialize results list with better structure
+  listPreprocessed <- list(
+    FunctionOrigin = "perform_PreprocessingPeakData",
+    Parameters = list(
+      outliers = outliers,
+      filterMissing = filterMissing,
+      filterMissing_by_group = filterMissing_by_group,
+      filterMissing_includeQC = filterMissing_includeQC,
+      denMissing = denMissing,
+      driftBatchCorrection = driftBatchCorrection,
+      dataNormalize = dataNormalize,
+      dataTransform = dataTransform,
+      dataScalePCA = dataScalePCA,
+      dataScalePLS = dataScalePLS,
+      filterMaxRSD = filterMaxRSD,
+      filterMaxVarSD = filterMaxVarSD
+    ),
+    ProcessingSteps = character(),
+    Dimensions = data.frame(
+      Step = character(),
+      Samples = numeric(),
+      Features = numeric(),
+      stringsAsFactors = FALSE
+    )
   )
 
-  # Extract Samples x Features data only
-  metadata_columns <- c("Sample", "SubjectID", "Replicate", "Group", "Batch", "Injection", "DilutionMarker", "Response") # The columns we don't need anymore
-  df <- data_transposed %>% dplyr::select(-one_of(metadata_columns)) # remove metadata columns columns
+  # Optimized data transposition and initial processing
+  msg("Transposing and preparing data...")
 
-  listPreprocessed$Dimensions <- base::rbind(listPreprocessed$Dimensions,
-                                             # Add the removed outliers. I did this to avoid creating multiple variables
-                                             c("Original", dim(df)[1] + length(removed_outliers), dim(df)[2])) # Update list
-  listPreprocessed$Dimensions <- base::rbind(listPreprocessed$Dimensions, c("Removed outliers",
-                                                                            dim(df)[1], dim(df)[2])) # Update list
+  tryCatch({
+    # More efficient transposition
+    data_transposed <- as.data.frame(t(raw_data$raw_data))
 
-  listPreprocessed$SamplesXFeatures <- df # Update list
-
-  df[df == 0] <- NA # Replace 0 with NA
-  num_na      <- sum(is.na(df), na.rm = TRUE) # Count NAs
-  df          <- `rownames<-`(df, data_transposed$Sample) # set row names to sample IDs
-  df[]        <- lapply(df, as.numeric) # Convert to numeric
-  df          <- df[, colSums(is.na(df)) < nrow(df)] # Remove features if all NAs
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------- Filtering Out Features/Metabolites with Large RSD (start) -------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # In filterMissing
-  if (filterMissing_by_group) {
-    # Group-based filtering (your existing logic)
-    if (filterMissing_includeQC) {
-      # Compute missing percentages per group (including QC)
-      missing_by_group <- base::sapply(listPreprocessed$Metadata$Group, function(g) {
-        rows <- listPreprocessed$Metadata$Group == g
-        base::colMeans(is.na(df[rows, , drop = FALSE]))
-      }) %>% t() %>% .[!duplicated(.), ]
-      # Remove feature if missingness is >= threshold in all groups
-      remove_features <- base::apply(missing_by_group, 2, function(x) all(x >= filterMissing / 100))
-    } else {
-      # Compute missing percentages per group (excluding SQC, EQC, and QC)
-      missing_by_group <- base::sapply(listPreprocessed$Metadata$Group[!listPreprocessed$Metadata$Group %in% c("SQC", "EQC", "QC")], function(g) {
-        rows <- listPreprocessed$Metadata$Group == g
-        base::colMeans(is.na(df[rows, , drop = FALSE]))
-      }) %>% t() %>% .[!duplicated(.), ]
-      # Remove feature if missingness is >= threshold in all groups
-      remove_features <- base::apply(missing_by_group, 2, function(x) all(x >= filterMissing / 100))
-    }
-  } else {
-    # Overall filtering (ignoring groups)
-    if (filterMissing_includeQC) {
-      # Calculate missing percentages across all samples (including QC)
-      missing_overall <- base::colMeans(is.na(df))
-      # Remove features if missingness is >= threshold
-      remove_features <- missing_overall >= filterMissing / 100
-    } else {
-      # Calculate missing percentages excluding SQC, EQC, and QC samples
-      rows_to_include <- !listPreprocessed$Metadata$Group %in% c("SQC", "EQC", "QC")
-      missing_overall <- base::colMeans(is.na(df[rows_to_include, , drop = FALSE]))
-      # Remove features if missingness is >= threshold
-      remove_features <- missing_overall >= filterMissing / 100
+    if (nrow(data_transposed) == 0) {
+      stop("Transposed data has zero rows. Check input data structure.")
     }
 
-    # Save removed features as data frame
-    listPreprocessed$data_Removed_Columns_in_filteredMissing <- df[, remove_features, drop = FALSE]
+    # Set column names more efficiently
+    colnames(data_transposed) <- as.character(data_transposed[1, ])
+    data_transposed <- data_transposed[-1, ]
 
-    # Filter the dataset
-    df <- df[, !remove_features]
-  }
+    # Safer numeric conversion with error handling
+    if ("Injection" %in% colnames(data_transposed)) {
+      data_transposed$Injection <- safe_numeric(data_transposed$Injection)
+      data_transposed <- data_transposed[order(data_transposed$Injection), ]
+    } else {
+      warning("'Injection' column not found. Data will not be sorted by injection sequence.")
+    }
 
-  # Filter the dataset
-  df <- df[, !remove_features]
-
-  listPreprocessed$data_filteredMissing <- df # Update list
-
-  # Update results
-  listPreprocessed$Dimensions            <- base::rbind(listPreprocessed$Dimensions, c("Missing Percent Greater", dim(df)[1], dim(df)[2])) # Update list
-  listPreprocessed$NumberOfMissingValues <- num_na
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------- Filtering Out Features/Metabolites with Large RSD (end) --------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------- Missing Value Imputation (start) -------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # Replace missing values with a fraction of the minimum positive value
-  df[]        <- base::lapply(df, function(x) {
-    min_val   <- base::min(x[x > 0], na.rm = TRUE)
-    base::replace(
-      x      = x,                   # vector
-      list   = is.na(x),            # index vector
-      values = min_val / denMissing # replacement values
-    )
+  }, error = function(e) {
+    stop("Error in data transposition and preparation: ", e$message)
   })
 
-  listPreprocessed$data_no_NA <- df # Update list
+  n_samples <- nrow(data_transposed)
+  n_features_metabolites <- ncol(data_transposed) - 8
 
-  message("✅ Employed: All 0's have been replaced with NA's.")
-  message(paste0("✅ Employed: Removal of features where at least ", filterMissing, "% is missing in each Group."))
-  message(paste0("✅ Employed: Missing values replaced with 1/", denMissing, " of the smallest positive peak."))
+  msg(sprintf("Dataset contains %d samples and %d features/metabolites.",
+              n_samples, n_features_metabolites))
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------- Missing Value Imputation (end) ---------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # Record initial dimensions
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "Original", Samples = n_samples, Features = n_features_metabolites)
+  )
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------ Drift- and Batch-Correction (start) ------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # Optimized outlier removal
+  if (!is.null(outliers) && length(outliers) > 0) {
+    msg("Removing specified outliers...")
 
-  message("Employing: Drift correction then batch correction. This only outputs 1 data frame.")
+    # More efficient outlier identification
+    outliers_present <- outliers[outliers %in% data_transposed$Sample]
+    outliers_missing <- setdiff(outliers, outliers_present)
 
-  if (isTRUE(driftBatchCorrection)) {
-    df <- pmp::QCRSC(
-      df       = df,
-      order    = listPreprocessed$Metadata$InjectionSequence,
-      batch    = listPreprocessed$Metadata$Batches,
-      # Replace SQC and EQC with QC and back to vector
-      classes  = data.frame(Groups = listPreprocessed$Metadata$Group) %>% dplyr::mutate(Groups = ifelse(Groups %in% c("SQC", "EQC"), "QC", Groups)) %>% as.vector() %>% .$Groups,
-      spar     = spline_smooth_param, # 0 Spline smoothing parameter. Should be in the range 0 to 1. If set to 0 it will be estimated using leave-one-out cross-validation.
-      log      = log_scale,
-      minQC    = min_QC,
-      qc_label = "QC",
-      spar_lim = spline_smooth_param_limit
-    ) %>% t() %>% as.data.frame()
-
-    listPreprocessed$data_driftBatchCorrected <- df # Update list
-
-    if (spline_smooth_param == 0) {
-      message("✅ Employed: Drift correction then batch correction with Spline smoothing parameter (leave-one-out cross-validation).")
-    } else {
-      message("✅ Employed: Drift correction then batch correction.")
+    if (length(outliers_present) > 0) {
+      data_transposed <- data_transposed[!data_transposed$Sample %in% outliers_present, ]
+      msg(sprintf("Removed %d outliers: %s",
+                  length(outliers_present),
+                  paste(outliers_present, collapse = ", ")))
     }
 
-  } else { # if driftBatchCorrection is not TRUE
-    df <- df
-    listPreprocessed$data_driftBatchCorrected <- df # Update list
+    if (length(outliers_missing) > 0) {
+      msg(sprintf("Outliers not found in data: %s",
+                  paste(outliers_missing, collapse = ", ")))
+    }
 
-    message("❌ NOT Employed: Drift correction then batch correction with Spline smoothing parameter (leave-one-out cross-validation).")
+    listPreprocessed$outliers_removed <- outliers_present
+    listPreprocessed$outliers_not_found <- outliers_missing
+
+    listPreprocessed$Dimensions <- rbind(
+      listPreprocessed$Dimensions,
+      data.frame(Step = "After outlier removal",
+                 Samples = nrow(data_transposed),
+                 Features = ncol(data_transposed) - 8)
+    )
   }
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------ Drift- and Batch-Correction (end) --------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # More efficient metadata extraction
+  msg("Extracting metadata...")
 
-  message("Employing: 2nd Replacing of missing values using 1/denMissing, because drift correction and batch correction likely produced NAs.")
+  required_cols <- c("Sample", "SubjectID", "Replicate", "Group", "Batch", "Injection", "Normalization", "Response")
+  missing_cols <- setdiff(required_cols, colnames(data_transposed))
 
+  if (length(missing_cols) > 0) {
+    stop("Missing required columns in data: ", paste(missing_cols, collapse = ", "))
+  }
 
-  # Replace missing values 2, because drift correction and batch correction produced NAs
-  df[]        <- base::lapply(df, function(x) { # Replace missing values with a fraction of the minimum positive value
-    min_val   <- base::min(x[x > 0], na.rm = TRUE)
-    base::replace(
-      x      = x,                     # vector
-      list   = is.na(x),              # index vector
-      values = min_val / denMissing   # replacement values ## Replace with minimum value only since only some values were NAs
-    )
+  # Optimized metadata creation
+  listPreprocessed$Metadata <- data.frame(
+    Samples = data_transposed$Sample,
+    SubjectID = safe_numeric(data_transposed$SubjectID),
+    TechnicalReplicates = data_transposed$Replicate,
+    Group = data_transposed$Group,
+    Group_ = gsub("SQC|EQC", "QC", data_transposed$Group),
+    Batches = safe_numeric(data_transposed$Batch),
+    InjectionSequence = safe_numeric(data_transposed$Injection),
+    Normalization = safe_numeric(data_transposed$Normalization),
+    Response = safe_numeric(data_transposed$Response),
+    stringsAsFactors = FALSE
+  )
+
+  # More efficient QC indices
+  indices_qc <- listPreprocessed$Metadata$Group %in% c("SQC", "EQC", "QC")
+  indices_non_qc <- !indices_qc
+
+  # Extract feature data more efficiently
+  msg("Extracting feature data...")
+
+  metadata_columns <- c("Sample", "SubjectID", "Replicate", "Group", "Batch", "Injection", "Normalization", "Response")
+  df <- data_transposed[, !colnames(data_transposed) %in% metadata_columns, drop = FALSE]
+
+  # Store feature names
+  listPreprocessed$All_Features_Metabolites <- colnames(df)
+
+  # Optimized missing value handling
+  msg("Processing missing values...")
+
+  # More efficient zero-to-NA conversion
+  df[df == 0] <- NA
+  num_na <- sum(is.na(df))
+  msg(sprintf("Found %d missing values in the data.", num_na))
+
+  # Set rownames efficiently
+  rownames(df) <- data_transposed$Sample
+
+  # Convert to numeric more safely
+  df[] <- lapply(df, function(x) {
+    tryCatch(as.numeric(x),
+             warning = function(w) as.numeric(x),
+             error = function(e) {
+               warning("Could not convert column to numeric: ", e$message)
+               x
+             })
   })
 
-  listPreprocessed$data_driftBatchCorrected_noNa <- df # Update list
+  # Remove all-NA columns efficiently
+  all_na_cols <- colSums(is.na(df)) == nrow(df)
+  if (any(all_na_cols)) {
+    n_removed <- sum(all_na_cols)
+    df <- df[, !all_na_cols, drop = FALSE]
+    msg(sprintf("Removed %d features with all missing values.", n_removed))
+  }
 
-  message("✅ Employed: 2nd Replacing of missing values introduced by drift- and batch-correction.")
+  listPreprocessed$SamplesXFeatures <- df
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After removing all-NA features",
+               Samples = nrow(df), Features = ncol(df))
+  )
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------- Plot Before and After Drift- and Batch-Correction (start) -------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # Optimized missing value filtering
+  msg(sprintf("Applying missing value filter (threshold: %g%%)", filterMissing))
 
-  # Before and After Drift- and Batch-correction with trend lines on QCs
-  create_batch_drift_plots_with_trends <- function(df_before, df_after, classes, batch, indexes, qc_label = "QC") {
+  filter_missing_features <- function(data, threshold, by_group, include_qc, metadata) {
+    if (by_group) {
+      if (include_qc) {
+        groups <- unique(metadata$Group)
+      } else {
+        groups <- unique(metadata$Group[!metadata$Group %in% c("SQC", "EQC", "QC")])
+      }
 
-    create_single_plot_with_trend <- function(feature_idx, feature_name) {
+      # Calculate missing percentages per group more efficiently
+      missing_by_group <- sapply(groups, function(g) {
+        group_indices <- metadata$Group == g
+        colMeans(is.na(data[group_indices, , drop = FALSE]))
+      })
 
-      plot_data <- base::data.frame(
-        sample_id = 1:nrow(df_before),
-        before    = base::log10(df_before[, feature_idx]),   # log10 transformation
-        after     = base::log10(df_after[, feature_idx]),    # log10 transformation
-        class     = classes,
-        batch     = base::as.factor(batch)
+      # Remove features with high missingness in ALL groups
+      remove_features <- apply(missing_by_group, 1, function(x) all(x >= threshold / 100))
+    } else {
+      if (include_qc) {
+        missing_overall <- colMeans(is.na(data))
+      } else {
+        non_qc_indices <- !metadata$Group %in% c("SQC", "EQC", "QC")
+        missing_overall <- colMeans(is.na(data[non_qc_indices, , drop = FALSE]))
+      }
+      remove_features <- missing_overall >= threshold / 100
+    }
+
+    return(!remove_features)  # Return which features to keep
+  }
+
+  features_to_keep <- filter_missing_features(df, filterMissing, filterMissing_by_group,
+                                              filterMissing_includeQC, listPreprocessed$Metadata)
+
+  n_features_before <- ncol(df)
+  df <- df[, features_to_keep, drop = FALSE]
+  n_features_after <- ncol(df)
+
+  msg(sprintf("Removed %d features due to missing value threshold.",
+              n_features_before - n_features_after))
+
+  listPreprocessed$data_filteredMissing <- df
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After missing value filter",
+               Samples = nrow(df), Features = ncol(df))
+  )
+
+  # Optimized missing value imputation
+  msg("Performing missing value imputation...")
+
+  # More efficient imputation
+  df[] <- lapply(df, function(x) {
+    if (any(is.na(x))) {
+      positive_values <- x[x > 0 & !is.na(x)]
+      if (length(positive_values) > 0) {
+        min_val <- min(positive_values)
+        x[is.na(x)] <- min_val / denMissing
+      }
+    }
+    return(x)
+  })
+
+  listPreprocessed$data_no_NA <- df
+  msg(sprintf("Imputed missing values using 1/%d of minimum positive value per feature.", denMissing))
+
+  # Optimized drift and batch correction
+  msg("Applying drift and batch correction...")
+
+  if (driftBatchCorrection) {
+    # Check for required packages
+    if (!requireNamespace("pmp", quietly = TRUE)) {
+      warning("Package 'pmp' not available. Skipping drift/batch correction.")
+      driftBatchCorrection <- FALSE
+    }
+  }
+
+  if (driftBatchCorrection) {
+    tryCatch({
+      df_corrected <- pmp::QCRSC(
+        df = df,
+        order = listPreprocessed$Metadata$InjectionSequence,
+        batch = listPreprocessed$Metadata$Batches,
+        classes = as.vector(listPreprocessed$Metadata$Group_),
+        spar = spline_smooth_param,
+        log = log_scale,
+        minQC = min_QC,
+        qc_label = "QC",
+        spar_lim = spline_smooth_param_limit
       )
 
-      plot_data_long <- plot_data %>%
-        tidyr::pivot_longer(cols      = c(before, after),
-                            names_to  = "correction",
-                            values_to = "intensity") %>%
-        dplyr::mutate(correction = base::factor(correction, levels = c("before", "after")))
+      df <- as.data.frame(t(df_corrected))
+      msg("Applied QC-RSC drift and batch correction.")
 
-      # Add trend lines for QC samples
-      qc_data <- plot_data_long %>% dplyr::filter(class == qc_label)
+      # Handle any new NAs introduced by correction
+      new_na_count <- sum(is.na(df)) - sum(is.na(listPreprocessed$data_no_NA))
+      if (new_na_count > 0) {
+        msg(sprintf("Correction introduced %d new missing values. Re-imputing...", new_na_count))
+        df[] <- lapply(df, function(x) {
+          if (any(is.na(x))) {
+            positive_values <- x[x > 0 & !is.na(x)]
+            if (length(positive_values) > 0) {
+              min_val <- min(positive_values)
+              x[is.na(x)] <- min_val / denMissing
+            }
+          }
+          return(x)
+        })
+      }
 
-      p <- ggplot2::ggplot(plot_data_long, aes(x = sample_id, y = intensity)) +
-        ggplot2::geom_point(aes(color = class, shape = batch), size = 2, alpha = 0.7) +
-        # Add trend line for QC samples
-        ggplot2::geom_smooth(data = qc_data, aes(x = sample_id, y = intensity),
-                             method = "loess", se = TRUE, alpha = 0.3,
-                             color = "darkred", linetype = "dashed") +
-        ggplot2::facet_wrap(~ correction, scales = "free_y",
-                            labeller = labeller(correction = c(before = "Before Correction",
-                                                               after = "After Correction"))) +
-        ggplot2::scale_color_manual(values = c("QC" = "red",
-                                               "Sample" = "blue",
-                                               "Blank" = "green")) +
-        ggplot2:: scale_shape_manual(values = c("1" = 16, "2" = 17, "3" = 15, "4" = 18,
-                                                "5" = 8, "6" = 9, "7" = 10, "8" = 11)) +
-        ggplot2::labs(title = paste("Feature:", feature_name),
-                      x     = "Sample Index",
-                      y     = "log10(Intensity)",
-                      color = "Class",
-                      shape = "Batch") +
-        ggplot2::theme_minimal() +
-        ggplot2::theme(
-          plot.title   = element_text(size = 12, hjust = 0.5),
-          axis.text    = element_text(size = 10),
-          axis.title   = element_text(size = 11),
-          legend.title = element_text(size = 10),
-          legend.text  = element_text(size = 9),
-          strip.text   = element_text(size = 10, face = "bold")
-        )
-
-      return(p)
-    }
-
-    plot_list     <- base::list()
-    feature_names <- base::colnames(df_before)[indexes]
-
-    for (i in seq_along(indexes)) {
-      plot_list[[i]] <- create_single_plot_with_trend(indexes[i], feature_names[i])
-    }
-
-    return(plot_list)
+    }, error = function(e) {
+      warning("Drift/batch correction failed: ", e$message, ". Proceeding without correction.")
+      driftBatchCorrection <- FALSE
+    })
   }
 
-  # Select 6 random features
-  selected_indexes <- base::sample(x = 1:ncol(df), size = 6, replace = FALSE)
+  if (!driftBatchCorrection) {
+    msg("Skipping drift and batch correction.")
+  }
 
-  # Create the enhanced plots with trend lines and log10 transformation
-  beforeAfterBatchDrift <- create_batch_drift_plots_with_trends(
-    df_before = listPreprocessed$data_no_NA,
-    df_after  = df,
-    classes   = listPreprocessed$Metadata$Group_,
-    batch     = listPreprocessed$Metadata$Batches,
-    indexes   = selected_indexes,
-    qc_label  = "QC"
+  listPreprocessed$data_driftBatchCorrected <- df
+  gc_if_needed()
+
+  # Optimized normalization function
+  normalize_data <- function(data, method, metadata, indices_qc, indices_non_qc) {
+    msg(sprintf("Applying %s normalization...", method))
+
+    switch(method,
+           "none" = {
+             msg("No normalization applied.")
+             return(data)
+           },
+
+           "Normalization" = {
+             sg_values <- as.numeric(metadata$Normalization[indices_non_qc])
+             if (all(is.na(sg_values))) {
+               msg("Normalization values are all NA. Using sum normalization instead.")
+               sample_sums <- rowSums(data, na.rm = TRUE)
+               return(data / sample_sums)
+             } else {
+               data[indices_non_qc, ] <- data[indices_non_qc, ] / sg_values
+               data[indices_qc, ] <- data[indices_qc, ] / rowSums(data[indices_qc, ], na.rm = TRUE)
+               msg("Applied normalization using provided values.")
+               return(data)
+             }
+           },
+
+           "sum" = {
+             sample_sums <- rowSums(data, na.rm = TRUE)
+             msg("Applied sum normalization.")
+             return(data / sample_sums)
+           },
+
+           "median" = {
+             sample_medians <- apply(data, 1, median, na.rm = TRUE)
+             msg("Applied median normalization.")
+             return(data / sample_medians)
+           },
+
+           "PQN1" = {
+             reference_spectrum <- apply(data, 2, median, na.rm = TRUE)
+             quotients <- sweep(data, 2, reference_spectrum, "/")
+             median_quotients <- apply(quotients, 1, median, na.rm = TRUE)
+             msg("Applied PQN (global median approach).")
+             return(data / median_quotients)
+           },
+
+           "PQN2" = {
+             if (is.null(refSample) || !refSample %in% rownames(data)) {
+               stop("Reference sample not specified or not found in data for PQN2 normalization.")
+             }
+             reference_spectrum <- as.numeric(data[refSample, ])
+             quotients <- sweep(data, 2, reference_spectrum, "/")
+             median_quotients <- apply(quotients, 1, median, na.rm = TRUE)
+             msg(sprintf("Applied PQN using %s as reference.", refSample))
+             return(data / median_quotients)
+           },
+
+           "groupPQN" = {
+             if (is.null(groupSample)) {
+               stop("Group sample not specified for groupPQN normalization.")
+             }
+
+             pooled_indices <- if (groupSample == "both") {
+               metadata$Group %in% c("SQC", "EQC", "QC")
+             } else {
+               metadata$Group == groupSample
+             }
+
+             if (sum(pooled_indices) == 0) {
+               stop("No samples found for specified group sample.")
+             }
+
+             reference_spectrum <- apply(data[pooled_indices, , drop = FALSE], 2, median, na.rm = TRUE)
+             quotients <- sweep(data, 2, reference_spectrum, "/")
+             median_quotients <- apply(quotients, 1, median, na.rm = TRUE)
+             msg(sprintf("Applied group PQN using %s samples.", groupSample))
+             return(data / median_quotients)
+           },
+
+           "quantile" = {
+             if (!requireNamespace("pmp", quietly = TRUE)) {
+               stop("Package 'pmp' required for quantile normalization.")
+             }
+
+             tryCatch({
+               normalized <- pmp::pqn_normalisation(
+                 t(data),
+                 classes = metadata$Group_,
+                 qc_label = "QC",
+                 ref_mean = NULL,
+                 qc_frac = 0,
+                 sample_frac = 0,
+                 ref_method = reference_method
+               )
+               msg("Applied quantile normalization.")
+               return(as.data.frame(t(normalized)))
+             }, error = function(e) {
+               warning("Quantile normalization failed: ", e$message, ". Using sum normalization.")
+               sample_sums <- rowSums(data, na.rm = TRUE)
+               return(data / sample_sums)
+             })
+           },
+
+           {
+             warning("Unknown normalization method. No normalization applied.")
+             return(data)
+           }
+    )
+  }
+
+  # Apply normalization
+  df <- normalize_data(df, dataNormalize, listPreprocessed$Metadata, indices_qc, indices_non_qc)
+  listPreprocessed$data_normalized <- df
+  gc_if_needed()
+
+  # Optimized transformation function
+  transform_data <- function(data, method) {
+    msg(sprintf("Applying %s transformation...", method))
+
+    switch(method,
+           "none" = {
+             msg("No transformation applied.")
+             return(data)
+           },
+
+           "log2" = {
+             # Ensure positive values
+             min_val <- min(data, na.rm = TRUE)
+             if (min_val <= 0) {
+               data <- data - min_val + 1
+             }
+             msg("Applied log2 transformation.")
+             return(log2(data))
+           },
+
+           "log10" = {
+             min_val <- min(data, na.rm = TRUE)
+             if (min_val <= 0) {
+               data <- data - min_val + 1
+             }
+             msg("Applied log10 transformation.")
+             return(log10(data))
+           },
+
+           "sqrt" = {
+             min_val <- min(data, na.rm = TRUE)
+             if (min_val < 0) {
+               data <- data - min_val
+             }
+             msg("Applied square root transformation.")
+             return(sqrt(data))
+           },
+
+           "cbrt" = {
+             min_val <- min(data, na.rm = TRUE)
+             if (min_val < 0) {
+               data <- data - min_val + 1
+             }
+             msg("Applied cube root transformation.")
+             return(data^(1/3))
+           },
+
+           "vsn" = {
+             if (!requireNamespace("vsn", quietly = TRUE)) {
+               warning("Package 'vsn' not available. Using log10 transformation instead.")
+               min_val <- min(data, na.rm = TRUE)
+               if (min_val <= 0) {
+                 data <- data - min_val + 1
+               }
+               return(log10(data))
+             }
+
+             tryCatch({
+               data_matrix <- as.matrix(data)
+               vsn_fit <- vsn::vsn2(data_matrix)
+               result <- predict(vsn_fit, newdata = data_matrix)
+               msg("Applied VSN transformation.")
+               return(as.data.frame(result))
+             }, error = function(e) {
+               warning("VSN transformation failed: ", e$message, ". Using log10 instead.")
+               min_val <- min(data, na.rm = TRUE)
+               if (min_val <= 0) {
+                 data <- data - min_val + 1
+               }
+               return(log10(data))
+             })
+           },
+
+           {
+             warning("Unknown transformation method. No transformation applied.")
+             return(data)
+           }
+    )
+  }
+
+  # Apply transformation
+  df <- transform_data(df, dataTransform)
+  listPreprocessed$data_transformed <- df
+  gc_if_needed()
+
+  # Optimized scaling function
+  scale_data_optimized <- function(data, method, purpose) {
+    msg(sprintf("Applying %s scaling for %s analysis...", method, purpose))
+
+    switch(method,
+           "none" = {
+             msg(sprintf("No scaling applied for %s data.", purpose))
+             return(data)
+           },
+
+           "mean" = {
+             scaled_data <- scale(data, center = TRUE, scale = FALSE)
+             msg(sprintf("Applied mean centering for %s analysis.", purpose))
+             return(as.data.frame(scaled_data))
+           },
+
+           "meanSD" = {
+             scaled_data <- scale(data, center = TRUE, scale = TRUE)
+             msg(sprintf("Applied mean centering and unit variance scaling for %s analysis.", purpose))
+             return(as.data.frame(scaled_data))
+           },
+
+           "mean2SD" = {
+             # Pareto scaling
+             sds <- apply(data, 2, sd, na.rm = TRUE)
+             scaled_data <- scale(data, center = TRUE, scale = sqrt(sds))
+             msg(sprintf("Applied Pareto scaling for %s analysis.", purpose))
+             return(as.data.frame(scaled_data))
+           },
+
+           {
+             warning("Unknown scaling method. No scaling applied.")
+             return(data)
+           }
+    )
+  }
+
+  # Apply scaling for both PCA and PLS
+  listPreprocessed$data_scaledPCA <- scale_data_optimized(df, dataScalePCA, "PCA")
+  listPreprocessed$data_scaledPLS <- scale_data_optimized(df, dataScalePLS, "PLS")
+  gc_if_needed()
+
+  # Optimized RSD filtering function
+  apply_rsd_filtering <- function(data, threshold, filter_by, metadata, data_for) {
+    if (is.null(threshold)) {
+      msg(sprintf("No RSD filtering applied for %s data.", data_for))
+      return(data)
+    }
+
+    msg(sprintf("Applying RSD filtering (threshold: %g%%) for %s data...", threshold, data_for))
+
+    if (!requireNamespace("pmp", quietly = TRUE)) {
+      warning("Package 'pmp' not available. Skipping RSD filtering.")
+      return(data)
+    }
+
+    tryCatch({
+      # Determine QC label and classes based on filter_by parameter
+      qc_label <- ifelse(filter_by == "both", "QC", filter_by)
+
+      # Get the correct classes vector based on filter_by
+      if (filter_by == "both") {
+        classes <- metadata$Group_
+      } else {
+        classes <- metadata$Group
+      }
+
+      # Ensure we have the right number of samples by matching rownames
+      data_sample_names <- rownames(data)
+      metadata_sample_names <- metadata$Samples
+
+      # Find matching samples between data and metadata
+      matching_indices <- match(data_sample_names, metadata_sample_names)
+
+      # Check for any non-matching samples
+      if (any(is.na(matching_indices))) {
+        warning("Some samples in data are not found in metadata. This may cause issues.")
+        # Remove NAs and use only matching samples
+        valid_indices <- !is.na(matching_indices)
+        data <- data[valid_indices, , drop = FALSE]
+        matching_indices <- matching_indices[valid_indices]
+      }
+
+      # Subset classes to match the data samples
+      classes_matched <- classes[matching_indices]
+
+      # Final dimension check
+      if (length(classes_matched) != nrow(data)) {
+        warning(sprintf("Dimension mismatch persists: classes (%d) vs data rows (%d). Skipping RSD filtering.",
+                        length(classes_matched), nrow(data)))
+        return(data)
+      }
+
+      # Check for NAs in classes
+      if (any(is.na(classes_matched))) {
+        warning("NA values found in sample classes. Skipping RSD filtering.")
+        return(data)
+      }
+
+      # Check if we have the required QC samples
+      if (!qc_label %in% classes_matched) {
+        warning(sprintf("No %s samples found for RSD filtering. Skipping RSD filtering.", qc_label))
+        return(data)
+      }
+
+      filtered_data <- pmp::filter_peaks_by_rsd(
+        t(data),
+        max_rsd = threshold,
+        class = as.vector(classes_matched),
+        qc_label = qc_label
+      )
+
+      result <- as.data.frame(t(filtered_data))
+      n_removed <- ncol(data) - ncol(result)
+      msg(sprintf("Removed %d features with RSD > %g%% for %s analysis.", n_removed, threshold, data_for))
+
+      return(result)
+
+    }, error = function(e) {
+      warning("RSD filtering failed: ", e$message, ". Returning original data.")
+      return(data)
+    })
+  }
+
+  # Apply RSD filtering
+  listPreprocessed$data_scaledPCA_rsdFiltered <- apply_rsd_filtering(
+    listPreprocessed$data_scaledPCA, filterMaxRSD, filterMaxRSD_by,
+    listPreprocessed$Metadata, "PCA"
   )
 
-  # Determine the main title based on batch information
-  main_title <- if (length(unique(listPreprocessed$Metadata$Batches)) == 1) {
-    "Plot of 6 Random Features/Metabolites Before and After Drift-Correction"
-  } else {
-    "Plot of 6 Random Features/Metabolites Before and After Drift- and Batch-Correction"
+  listPreprocessed$data_scaledPLS_rsdFiltered <- apply_rsd_filtering(
+    listPreprocessed$data_scaledPLS, filterMaxRSD, filterMaxRSD_by,
+    listPreprocessed$Metadata, "PLS"
+  )
+
+  # Update dimensions for RSD filtered data
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After RSD filtering (PCA)",
+               Samples = nrow(listPreprocessed$data_scaledPCA_rsdFiltered),
+               Features = ncol(listPreprocessed$data_scaledPCA_rsdFiltered))
+  )
+
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After RSD filtering (PLS)",
+               Samples = nrow(listPreprocessed$data_scaledPLS_rsdFiltered),
+               Features = ncol(listPreprocessed$data_scaledPLS_rsdFiltered))
+  )
+
+  gc_if_needed()
+
+  # Optimized variance filtering function
+  apply_variance_filtering <- function(data, threshold, data_for) {
+    if (is.null(threshold)) {
+      msg(sprintf("No variance filtering applied for %s data.", data_for))
+      return(data)
+    }
+
+    msg(sprintf("Applying variance filtering (%gth percentile) for %s data...", threshold, data_for))
+
+    tryCatch({
+      # Calculate standard deviations more efficiently
+      sds <- apply(data, 2, sd, na.rm = TRUE)
+
+      # Handle invalid SDs
+      valid_sds <- is.finite(sds) & !is.na(sds) & sds > 0
+
+      if (sum(valid_sds) == 0) {
+        warning(sprintf("No valid standard deviations for %s data. Returning original data.", data_for))
+        return(data)
+      }
+
+      # Calculate threshold using only valid SDs
+      threshold_value <- quantile(sds[valid_sds], threshold/100, na.rm = TRUE)
+
+      # Keep features with SD > threshold AND valid SDs
+      keep_features <- (sds > threshold_value) & valid_sds
+
+      result <- data[, keep_features, drop = FALSE]
+      n_removed <- ncol(data) - ncol(result)
+      msg(sprintf("Removed %d features with low variance for %s analysis.", n_removed, data_for))
+
+      return(result)
+
+    }, error = function(e) {
+      warning("Variance filtering failed: ", e$message, ". Returning original data.")
+      return(data)
+    })
   }
 
-  # Arrange plots in a grid with main title and suppress all messages from this block
-  plot_beforeAfterBatchDrift <- base::suppressMessages({
-    gridExtra::grid.arrange(
-      beforeAfterBatchDrift[[1]],
-      beforeAfterBatchDrift[[2]],
-      beforeAfterBatchDrift[[3]],
-      beforeAfterBatchDrift[[4]],
-      beforeAfterBatchDrift[[5]],
-      beforeAfterBatchDrift[[6]],
-      ncol = 2, nrow = 3,
-      top = main_title
+  # Apply variance filtering
+  listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered <- apply_variance_filtering(
+    listPreprocessed$data_scaledPCA_rsdFiltered, filterMaxVarSD, "PCA"
+  )
+
+  listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered <- apply_variance_filtering(
+    listPreprocessed$data_scaledPLS_rsdFiltered, filterMaxVarSD, "PLS"
+  )
+
+  # Update final dimensions
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "Final (PCA ready)",
+               Samples = nrow(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered),
+               Features = ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered))
+  )
+
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "Final (PLS ready)",
+               Samples = nrow(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
+               Features = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered))
+  )
+
+  # Enhanced plotting function for drift/batch correction visualization
+  create_enhanced_drift_plots <- function(df_before, df_after, metadata, n_features = 6) {
+    msg("Creating visualization plots for drift/batch correction...")
+
+    if (!requireNamespace("ggplot2", quietly = TRUE) ||
+        !requireNamespace("tidyr", quietly = TRUE) ||
+        !requireNamespace("gridExtra", quietly = TRUE)) {
+      warning("Required packages for plotting not available. Skipping plot creation.")
+      return(NULL)
+    }
+
+    tryCatch({
+      # Select random features more safely
+      n_features <- min(n_features, ncol(df_before), ncol(df_after))
+      if (n_features < 1) {
+        warning("No features available for plotting.")
+        return(NULL)
+      }
+
+      selected_features <- sample(1:ncol(df_before), n_features, replace = FALSE)
+
+      # Create individual plots
+      plot_list <- list()
+
+      for (i in seq_along(selected_features)) {
+        feature_idx <- selected_features[i]
+        feature_name <- colnames(df_before)[feature_idx]
+
+        # Prepare plot data with better error handling
+        plot_data <- data.frame(
+          sample_id = 1:nrow(df_before),
+          before = log10(pmax(df_before[, feature_idx], 1e-10)),  # Prevent log of zero
+          after = log10(pmax(df_after[, feature_idx], 1e-10)),
+          class = metadata$Group_,
+          batch = as.factor(metadata$Batches),
+          stringsAsFactors = FALSE
+        )
+
+        # Transform to long format
+        plot_data_long <- tidyr::pivot_longer(
+          plot_data,
+          cols = c("before", "after"),
+          names_to = "correction",
+          values_to = "intensity"
+        )
+
+        plot_data_long$correction <- factor(plot_data_long$correction,
+                                            levels = c("before", "after"))
+
+        # Create plot
+        p <- ggplot2::ggplot(plot_data_long, ggplot2::aes(x = sample_id, y = intensity)) +
+          ggplot2::geom_point(ggplot2::aes(color = class, shape = batch),
+                              size = 2, alpha = 0.7) +
+          ggplot2::geom_smooth(data = subset(plot_data_long, class == "QC"),
+                               formula = y ~ x,
+                               method = "loess", se = TRUE, alpha = 0.3,
+                               color = "darkred", linetype = "dashed") +
+          ggplot2::facet_wrap(~ correction, scales = "free_y",
+                              labeller = ggplot2::labeller(
+                                correction = c(before = "Before Correction",
+                                               after = "After Correction"))) +
+          ggplot2::scale_color_manual(values = c("QC" = "red", "Sample" = "blue",
+                                                 "Blank" = "green")) +
+          ggplot2::labs(title = paste("Feature:", feature_name),
+                        x = "Sample Index",
+                        y = "log10(Intensity)",
+                        color = "Class", shape = "Batch") +
+          ggplot2::theme_minimal() +
+          ggplot2::theme(
+            plot.title = ggplot2::element_text(size = 12, hjust = 0.5),
+            axis.text = ggplot2::element_text(size = 10),
+            axis.title = ggplot2::element_text(size = 11),
+            legend.title = ggplot2::element_text(size = 10),
+            legend.text = ggplot2::element_text(size = 9),
+            strip.text = ggplot2::element_text(size = 10, face = "bold")
+          )
+
+        plot_list[[i]] <- p
+      }
+
+      # Create combined plot
+      n_batches <- length(unique(metadata$Batches))
+      main_title <- ifelse(n_batches == 1,
+                           "Random Features Before and After Drift-Correction",
+                           "Random Features Before and After Drift- and Batch-Correction")
+
+      combined_plot <- do.call(gridExtra::grid.arrange,
+                               c(plot_list, list(ncol = 2, top = main_title)))
+
+      msg("Visualization plots created successfully.")
+      return(combined_plot)
+
+    }, error = function(e) {
+      warning("Plot creation failed: ", e$message)
+      return(NULL)
+    })
+  }
+
+  # Create visualization plots if data exists
+  if (exists("listPreprocessed") && "data_no_NA" %in% names(listPreprocessed)) {
+    listPreprocessed$plot_beforeAfterDriftBatchCorrection <- create_enhanced_drift_plots(
+      listPreprocessed$data_no_NA,
+      listPreprocessed$data_driftBatchCorrected,
+      listPreprocessed$Metadata
     )
-  })
-
-  # Store in the list
-  listPreprocessed$plot_beforeAfterDriftBatchCorrection <- plot_beforeAfterBatchDrift
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------- Plot Before and After Drift- and Batch-Correction (end) --------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ---------------------------------------- Data Transformation (start) ----------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  message("Employing: Data transformation.")
-
-  # Assume `dataTransform` is one of: "none", "log2", "log10", "sqrt", "cbrt"
-  if (dataTransform == "log2") {
-    df <- df - base::min(df) + 1  # Ensure all values are positive for log2
-    df <- base::log2(df) %>% as.data.frame()
-    message("✅ Employed: Log2 transformation.")
-
-  } else if (dataTransform == "log10") {
-    df <- df - min(df) + 1  # Ensure all values are positive for log10
-    df <- base::log10(df) %>% as.data.frame()
-    message("✅ Employed: Log10 transformation.")
-
-  } else if (dataTransform == "sqrt") {
-    df <- df - min(df) + 1  # Ensure all values are non-negative for sqrt
-    df <- base::sqrt(df) %>% as.data.frame()
-    message("✅ Employed: Square root transformation.")
-
-  } else if (dataTransform == "cbrt") {
-    # df <- sign(df) * abs(df)^(1/3) %>% as.data.frame()  # Cube root handles negative values
-    df <- df - base::min(df) + 1  # Ensure all values are non-negative
-    df <- df^(1/3) %>% as.data.frame()
-    message("✅ Employed: Cube root transformation.")
-
-  } else if (dataTransform == "vsn") {
-    df <- t(df) %>% # Transpose to Features x Samples format as requirement of vsn
-      vsn::justvsn(df) %>%
-      t() %>% as.data.frame() # Transpose back to Samples x Features format
-    message("✅ Employed: Variance Stabilizing Normalization.")
-
-  } else {
-    message("❌  NOT Employed: 'none' was selected, hence, no data transformation was carried out.")
   }
 
-  listPreprocessed$data_transformed <- df # Update list
+  # Add processing summary
+  listPreprocessed$ProcessingSummary <- list(
+    total_samples_processed = nrow(listPreprocessed$Metadata),
+    total_features_original = length(listPreprocessed$All_Features_Metabolites),
+    total_features_final_PCA = ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered),
+    total_features_final_PLS = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
+    outliers_removed = length(listPreprocessed$outliers_removed %||% character(0)),
+    missing_values_imputed = sum(is.na(listPreprocessed$SamplesXFeatures)),
+    drift_batch_correction_applied = driftBatchCorrection,
+    normalization_method = dataNormalize,
+    transformation_method = dataTransform,
+    scaling_method_PCA = dataScalePCA,
+    scaling_method_PLS = dataScalePLS,
+    rsd_filtering_applied = !is.null(filterMaxRSD),
+    variance_filtering_applied = !is.null(filterMaxVarSD)
+  )
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------------ Data Transformation (end) ----------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # Add data quality metrics
+  listPreprocessed$QualityMetrics <- list(
+    data_completeness = 1 - sum(is.na(listPreprocessed$data_transformed)) /
+      (nrow(listPreprocessed$data_transformed) * ncol(listPreprocessed$data_transformed)),
+    feature_retention_rate_PCA = ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered) /
+      length(listPreprocessed$All_Features_Metabolites),
+    feature_retention_rate_PLS = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered) /
+      length(listPreprocessed$All_Features_Metabolites),
+    sample_retention_rate = nrow(listPreprocessed$Metadata) /
+      (nrow(listPreprocessed$Metadata) + length(listPreprocessed$outliers_removed %||% character(0)))
+  )
 
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------------------------------- Data Scaling (start) --------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
+  # Final cleanup
+  gc_if_needed()
 
-  # Scaling function
-  scale_data <- function(data, method, data_type) {
-    message(paste0("Employing: Data scaling for ", data_type, "."))
+  msg("Data preprocessing pipeline completed successfully!")
+  msg(sprintf("Final dataset dimensions: %d samples X %d features (PCA-ready)",
+              nrow(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered),
+              ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered)))
+  msg(sprintf("Final dataset dimensions: %d samples X %d features (PLS-ready)",
+              nrow(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
+              ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered)))
 
-    if (is.null(method)) {
-      message(paste0("❌ NOT Employed: Data scaling for ", data_type, " data."))
-      return(data)
-    }
+  # Add timestamp end
+  listPreprocessed$ProcessingTimestampEnd <- Sys.time()
 
-    scaled_data <- base::switch(method,
-                                "mean" = scale(data, center = TRUE, scale = FALSE),
-                                "meanSD" = scale(data, center = TRUE, scale = TRUE),
-                                "meanSD2" = scale(data, center = TRUE, scale = sqrt(apply(data, 2, sd))),
-                                data  # fallback if method not recognized
-    ) %>% as.data.frame()
-
-    message(paste0("✅ Employed: ", method, " Data scaling for ", data_type, " data."))
-    return(scaled_data)
+  # Add warnings if any steps were skipped
+  if (!driftBatchCorrection) {
+    listPreprocessed$Warnings <- c(listPreprocessed$Warnings %||% character(0),
+                                   "Drift/batch correction was skipped")
   }
-
-  # Apply scaling for both datasets
-  listPreprocessed$data_scaledPCA <- scale_data(df, dataScalePCA, "PCA")
-  listPreprocessed$data_scaledOPLSDA <- scale_data(df, dataScaleOPLSDA, "OPLS-DA")
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------- Data Scaling (end) ---------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ---------------------------------------- Data Normalization (start) -----------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  message("Employing: Data Normalization.")
-
-  # Function to apply normalization to a dataset
-  normalize_data <- function(df_scaled) {
-    if (dataNormalize == "none") {
-      message("❌ NOT Employed: Data Normalization.")
-      return(df_scaled)
-    }
-
-    if (dataNormalize == "DilutionMarker") {
-      sg_values <- base::as.numeric(data_transposed$DilutionMarker)
-      if (all(is.na(sg_values))) {
-        message("⚠️ Dilution Marker values are all NA. Normalization by Sum will be performed instead.")
-        sample_sums <- base::rowSums(df_scaled, na.rm = TRUE)
-        df_scaled <- df_scaled / sample_sums
-      } else {
-        df_scaled[indices_non_qc, ] <- base::sweep(df_scaled[indices_non_qc, ], 1, sg_values, "/")
-        df_scaled[indices_qc, ] <- base::sweep(df_scaled[indices_qc, ], 1, base::rowSums(df_scaled[indices_qc, ], na.rm = TRUE), "/")
-        message("✅ Employed: Normalization using Dilution Marker values.")
-      }
-    } else if (dataNormalize == "sum") {
-      sample_sums <- base::rowSums(df_scaled, na.rm = TRUE)
-      df_scaled <- df_scaled / sample_sums
-      message("✅ Employed: Normalization by Sum.")
-    } else if (dataNormalize == "median") {
-      sample_medians <- base::apply(df_scaled, 1, median, na.rm = TRUE)
-      df_scaled <- df_scaled / sample_medians
-      message("✅ Employed: Normalization by Median.")
-    } else if (dataNormalize == "PQN1") {
-      reference_spectrum <- base::apply(df_scaled, 2, median, na.rm = TRUE)
-      quotients <- df_scaled / reference_spectrum
-      median_quotients <- base::apply(quotients, 1, median, na.rm = TRUE)
-      df_scaled <- df_scaled / median_quotients
-      message("✅ Employed: Probabilistic Quotient Normalization (PQN) according to global median approach.")
-    } else if (dataNormalize == "PQN2") {
-      reference_spectrum <- df_scaled[refSample, ] %>% t()
-      quotients <- base::sweep(df_scaled, 2, reference_spectrum, "/")
-      median_quotients <- apply(quotients, 1, median, na.rm = TRUE)
-      df_scaled <- base::sweep(df_scaled, 1, median_quotients, "/")
-      message(paste0("✅ Employed: Probabilistic Quotient Normalization (PQN) using '", refSample, "' as the reference sample in the normalization."))
-    } else if (dataNormalize == "groupPQN") {
-      if (is.null(groupSample)) {
-        stop("Please specify 'groupSample' for groupPQN normalization.")
-      }
-      pooled_indices <- if (groupSample == "both") {
-        data_transposed$Group %in% c("SQC", "EQC", "QC")
-      } else {
-        data_transposed$Group == groupSample
-      }
-      if (sum(pooled_indices) == 0) {
-        stop("No samples found for the specified 'groupSample'.")
-      }
-      reference_spectrum <- base::apply(df_scaled[pooled_indices, , drop = FALSE], 2, median, na.rm = TRUE)
-      quotients <- df_scaled / reference_spectrum
-      median_quotients <- base::apply(quotients, 1, median, na.rm = TRUE)
-      df_scaled <- df_scaled / median_quotients
-      message("✅ Employed: Group Probabilistic Quotient Normalization (groupPQN) using pooled group: ", groupSample)
-    } else if (dataNormalize == "quantile") {
-      df_scaled <- pmp::pqn_normalisation(
-        df_scaled,
-        classes = base::data.frame(Groups = listPreprocessed$Metadata$Group) %>%
-          dplyr::mutate(Groups = ifelse(Groups %in% c("SQC", "EQC"), "QC", Groups)) %>%
-          dplyr::pull(Groups),
-        qc_label = "QC",
-        ref_mean = NULL,
-        qc_frac = 0,
-        sample_frac = 0,
-        ref_method = reference_method
-      ) %>% t() %>% as.data.frame()
-      message("✅ Employed: Quantile Normalization.")
-    }
-
-    return(df_scaled)
-  }
-
-  # Apply normalization to both datasets
-  listPreprocessed$data_normalizedPCA <- normalize_data(listPreprocessed$data_scaledPCA)
-  listPreprocessed$data_normalizedOPLSDA <- normalize_data(listPreprocessed$data_scaledOPLSDA)
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ----------------------------------------- Data Normalization (end) ------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ---------------------- Data Filtering Using Relative Standard Deviation (RSD) (start) -----------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  message("Employing: Filtering of uninformative features using RSD (Relative Standard Deviation).")
-
-  # Function to apply RSD filtering
-  filter_by_rsd <- function(data, data_type) {
-    if (!is.null(filterMaxRSD)) {
-      df <- pmp::filter_peaks_by_rsd(
-        data,
-        max_rsd = filterMaxRSD,
-        class = if (filterMaxRSD_by == "both") {
-          base::data.frame(Groups = listPreprocessed$Metadata$Group) %>%
-            dplyr::mutate(Groups = ifelse(Groups %in% c("SQC", "EQC"), "QC", Groups)) %>%
-            dplyr::pull(Groups)
-        } else {
-          listPreprocessed$Metadata$Group
-        },
-        qc_label = ifelse(filterMaxRSD_by == "both", "QC", filterMaxRSD_by)
-      ) %>% t() %>% as.data.frame()
-
-      # Update dimensions
-      listPreprocessed$Dimensions <<- base::rbind(listPreprocessed$Dimensions,
-                                                  c(paste0("Relative SD (for ", data_type, "data)"),
-                                                    dim(df)[1], dim(df)[2])) %>% `colnames<-`(NULL)
-
-      message(paste0("✅ Employed: Filtering of uninformative features using RSD = ",
-                     filterMaxRSD, "%. (for ", data_type, " data)"))
-      return(df)
-    } else {
-      message(paste0("❌ NOT Employed: Filtering of uninformative features using RSD = ",
-                     filterMaxRSD, "%. (for ", data_type, " data)"))
-      return(data)
-    }
-  }
-
-  # Apply RSD filtering to both datasets
-  listPreprocessed$data_filteredMaxRSD_PCA <- filter_by_rsd(listPreprocessed$data_normalizedPCA, "PCA")
-  listPreprocessed$data_filteredMaxRSD_OPLSDA <- filter_by_rsd(listPreprocessed$data_normalizedOPLSDA, "OPLS-DA")
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ---------------------- Data Filtering Using Relative Standard Deviation (RSD) (end) -------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # ------------------ Data Filtering on Features with Low Variability Across Groups (start) --------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  message("Employing: Filtering features with low variability across samples.")
-
-  # Function to apply variance filtering
-  filter_by_variance <- function(data, data_type) {
-    if (!is.null(filterMaxVarSD)) {
-      df <- data %>%
-        { .[, apply(., 2, sd) > quantile(apply(., 2, sd), filterMaxVarSD/100)] }
-
-      # Update dimensions
-      listPreprocessed$Dimensions <<- base::rbind(listPreprocessed$Dimensions,
-                                                  c(paste0("Low Variance (for ", data_type, "data)"),
-                                                    dim(df)[1], dim(df)[2])) %>%
-        `colnames<-`(NULL)
-
-      message(paste0("✅ Employed: Filtered uninformative features with low variability across samples. Used threshold = ",
-                     filterMaxVarSD, "th percentile (for ", data_type, " data)."))
-      return(df)
-    } else {
-      message(paste0("❌ NOT Employed: Filtering of uninformative features with low variability across samples (for ",
-                     data_type, " data)."))
-      return(data)
-    }
-  }
-
-  # Apply variance filtering to both datasets
-  listPreprocessed$data_filteredMaxVarSD_PCA <- filter_by_variance(listPreprocessed$data_filteredMaxRSD_PCA, "PCA")
-  listPreprocessed$data_filteredMaxVarSD_OPLSDA <- filter_by_variance(listPreprocessed$data_filteredMaxRSD_OPLSDA, "OPLS-DA")
-
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------- Data Filtering on Features with Low Variability Across Groups (end) --------------------
-  # -------------------------------------------------------------------------------------------------------------
-  # -------------------------------------------------------------------------------------------------------------
-
-  message("✅✅✅ Data preprocessing is complete. The data is now ready for any statistical analysis based on selected data preprocessing techniques!")
-
-  message("⚠️⚠️⚠️ In the results, despite choosing 'none' for some methods (for example no normalization or no filtering vis RSD), there will still be results as such. However, this is for recording purposes only, and if chosen to have no normalization or filtering or any other step, there will be performing of such data preprocessing step. The data is the same as the previous step in this process.")
-  flush.console()
 
   return(listPreprocessed)
 }

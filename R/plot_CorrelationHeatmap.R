@@ -1,9 +1,9 @@
 #' Plot Correlational Heatmaps
 #'
 #' @description
-#' This function plots correlational heatmaps based on several correlation and clustering methods.
+#' This function plots correlational heatmaps based on several correlation and clustering methods. The plots are filtered based on the top samples/features/metabolites having the highest variability among groups.
 #'
-#' @param data List. This list must be a result from the `performPreprocessingPeakData` function. It can also be from a data scaling technique.
+#' @param data List. This list must be a result from the `perform_PreprocessingPeakData` function. It can also be from a data scaling technique.
 #' @param method String. Specifies the correlation method to be used.
 #'   \itemize{
 #'     \item "pearson": Uses Pearson r.
@@ -50,15 +50,15 @@
 #'     }
 #'     Defaults to "ward.D".
 #'
-#' @returns A heatmap plot.
+#' @returns A lsit containing the filtered data frame, methods used, the plot selected, and other metadata.
 #' @export
 #'
 #' @examples
 #' \dontrun{
-#' plotCorrelationHeatmap(data = results_from_performPreprocessingPeakData_function)
+#' plot_CorrelationHeatmap(data = results_from_perform_PreprocessingPeakData_function)
 #' }
 #'
-plotCorrelationHeatmap <- function(
+plot_CorrelationHeatmap <- function(
     data,
     method                   = c("pearson", "spearman", "kendall")[1],
     plot_top_n               = 1000,
@@ -73,28 +73,34 @@ plotCorrelationHeatmap <- function(
 
 ) {
 
-  pacman::p_load(Hmisc, pheatmap)
-
   # Contains all results
-  listResults <- list()
+  listResults <- base::list()
+  listResults$functionOrigin <- "plot_CorrelationHeatmap"
 
   # Set data to be used
   if (plot_what == "Samples") {
-    df <- t(data$data_scaledOPLSDA)
+    df <- base::t(data$data_scaledPCA_rsdFiltered_varFiltered)
   } else if (plot_what == "Features") {
-    df <- data$data_scaledOPLSDA
+    df <- data$data_scaledPCA_rsdFiltered_varFiltered
   } else {
     stop("plot_what must be 'Samples' or 'Features'")
   }
 
   # Find interquartile ranges
-  iqr_values <- apply(df, 2, IQR, na.rm = TRUE) %>% sort(decreasing = TRUE) %>% as.data.frame() %>% `colnames<-`("IQR")
+  # This is to check which features/metabolites have the highest variability
+  iqr_values <- base::apply(df, 2, stats::IQR, na.rm = TRUE) %>%
+    base::sort(decreasing = TRUE) %>%
+    base::as.data.frame() %>%
+    base::`colnames<-`("IQR")
 
   # Top N features
-  top_features <- rownames(iqr_values)[1:min(plot_top_n, length(t(iqr_values)))]
+  top_features <- base::rownames(iqr_values)[1:base::min(plot_top_n, base::length(base::t(iqr_values)))]
 
-  # Subset the data to these top features
+  # Subset the data to these top features/metabolites
   filtered_df <- df[, top_features]
+
+  # Creates a blank slate in 'Plot' pane
+  grid::grid.newpage()
 
   ## ============ Correlation Heatmap ============
   if (plot_type == "correlation") {
@@ -103,17 +109,26 @@ plotCorrelationHeatmap <- function(
     # cor_matrix <- cor(filtered_df, use = "pairwise.complete.obs", method = method) %>% as.data.frame()
 
     # Compute correlation matrix with p-values
-    cor_results <- Hmisc::rcorr(x = as.matrix(filtered_df), type = method)
-    cor_results.matrix <- cor_results$r
+    cor_results         <- Hmisc::rcorr(x = base::as.matrix(filtered_df), type = method)
+    cor_results.matrix  <- cor_results$r
     cor_results.pvalues <- cor_results$P
 
+    # Compute correlation matrix for all (does not rely on top_*)
+    cor_results_all         <- Hmisc::rcorr(x = base::as.matrix(df), type = method)
+    cor_results.matrix_all  <- cor_results$r
+    cor_results.pvalues_all <- cor_results$P
+
     # Masking correlation matrix
-    cor_results.matrix_masked <- cor_results.matrix
-    cor_results.matrix_masked[cor_results.pvalues >= 0.05] <- 0  # Zero correlation => neutral color in diverging palette
+    cor_results.matrix_masked                              <- cor_results.matrix
+    cor_results.matrix_masked[cor_results.pvalues >= 0.05] <- 0          # Zero correlation => neutral color in diverging palette
+
+    # Masking correlation matrix (all)
+    cor_results.matrix_masked_all                                  <- cor_results.matrix_all
+    cor_results.matrix_masked_all[cor_results.pvalues_all >= 0.05] <- 0  # Zero correlation => neutral color in diverging palette
 
     # Step 3: Define color palette
     # Colors: blue (negative), white (zero; non-significant, i.e., p >= .05), red (positive)
-    my_palette <- colorRampPalette(c("blue", "white", "red"))(50)
+    my_palette <- grDevices::colorRampPalette(c("blue", "white", "red"))(50)
 
     # Plot heatmap
     # heatmap.plot <- pheatmap::pheatmap(cor_matrix,
@@ -126,59 +141,61 @@ plotCorrelationHeatmap <- function(
     #                                    silent                   = TRUE)
 
     corr_heatmap.plot <- pheatmap::pheatmap(cor_results.matrix_masked,
-                                       color = my_palette,
-                                       breaks = seq(-1, 1, length.out = 51),  # ensure zero stays white
-                                       display_numbers = FALSE, #round(cor_results.matrix, 2),  # show original correlation (even if non-significant)
-                                       #number_color = "grey30",
-                                       show_rownames = ifelse(plot_what == "Samples", TRUE, show_rownames),
-                                       show_colnames = ifelse(plot_what == "Samples", TRUE, show_rownames),
-                                       fontsize = 10,
-                                       fontsize_row = 5,
-                                       fontsize_col = 5,
-                                       clustering_distance_rows = clustering_distance_rows,
-                                       clustering_distance_cols = clustering_distance_cols,
-                                       clustering_method = clustering_method,
-                                       main = paste0("Correlation Heatmap of ", plot_what," (Non-sig p > 0.05 shown as white)")
-                                       # ,silent = TRUE
+                                            color                    = my_palette,
+                                            breaks                   = base::seq(-1, 1, length.out = 51),  # ensure zero stays white
+                                            display_numbers          = FALSE, #round(cor_results.matrix, 2),  # show original correlation (even if non-significant)
+                                            show_rownames            = base::ifelse(plot_what == "Samples", TRUE, show_rownames),
+                                            show_colnames            = base::ifelse(plot_what == "Samples", TRUE, show_rownames),
+                                            fontsize                 = 10,
+                                            fontsize_row             = 5,
+                                            fontsize_col             = 5,
+                                            clustering_distance_rows = clustering_distance_rows,
+                                            clustering_distance_cols = clustering_distance_cols,
+                                            clustering_method        = clustering_method,
+                                            main = base::paste0("Correlation Heatmap of ", plot_what," (Non-sig p > 0.05 shown as white)"),
+                                            silent = TRUE
     )
 
-    listResults$CorrelationMatrix         <- cor_results.matrix
-    listResults$CorrelationMatrixPValues  <- cor_results.pvalues
-    listResults$CorrelationMatrixMasked   <- cor_results.matrix_masked
-    listResults$CorrelationHeatmap        <- corr_heatmap.plot
+    listResults$CorrelationMatrix.filtered   <- cor_results.matrix            %>% base::as.data.frame()
+    listResults$CorrelationMatrix.all        <- cor_results.matrix_all        %>% base::as.data.frame()
+    listResults$CorrelationMatrixPValues     <- cor_results.pvalues           %>% base::as.data.frame()
+    listResults$CorrelationMatrixPValues.all <- cor_results.pvalues_all       %>% base::as.data.frame()
+    listResults$CorrelationMatrixMasked      <- cor_results.matrix_masked     %>% base::as.data.frame()
+    listResults$CorrelationMatrixMasked.all  <- cor_results.matrix_masked_all %>% base::as.data.frame()
+    listResults$CorrelationHeatmap           <- corr_heatmap.plot
   }
 
   ## ============ Hierarchical Clustering Heatmap ============
   if (plot_type == "hierarchical") {
 
     # Define palette for raw values (blue to white to red)
-    my_palette2 <- colorRampPalette(c("blue", "white", "red"))(50)
+    my_palette2       <- grDevices::colorRampPalette(c("blue", "white", "red"))(50)
 
     hier_heatmap.plot <- pheatmap::pheatmap(filtered_df,
-                                            color = my_palette2,
-                                            show_rownames = ifelse(plot_what == "Samples", TRUE, show_rownames),
-                                            show_colnames = ifelse(plot_what == "Samples", TRUE, show_rownames),
-                                            fontsize = 10,
-                                            fontsize_row = 5,
-                                            fontsize_col = 5,
+                                            color                    = my_palette2,
+                                            show_rownames            = base::ifelse(plot_what == "Samples", TRUE, show_rownames),
+                                            show_colnames            = base::ifelse(plot_what == "Samples", TRUE, show_rownames),
+                                            fontsize                 = 10,
+                                            fontsize_row             = 5,
+                                            fontsize_col             = 5,
                                             clustering_distance_rows = clustering_distance_rows,
                                             clustering_distance_cols = clustering_distance_cols,
-                                            clustering_method = clustering_method,
-                                            main = paste0("Hierarchical Clustering Heatmap of ", plot_what)
-                                            # , silent = TRUE
+                                            clustering_method        = clustering_method,
+                                            main                     = base::paste0("Hierarchical Clustering Heatmap of ", plot_what),
+                                            silent                   = TRUE
     )
 
     listResults$HierarchicalHeatmap <- hier_heatmap.plot
 
-    listResults$HierarchicalHeatmap       <- hier_heatmap.plot
+    listResults$HierarchicalHeatmap <- hier_heatmap.plot
   }
 
   # Save results in 1 list
-  listResults$FunctionOrigin            <- "plotCorrelationHeatmap"
+  listResults$FunctionOrigin            <- "plot_CorrelationHeatmap"
   listResults$CorrelationMethod         <- method
   listResults$TopN                      <- plot_top_n
   listResults$TopFeatures               <- top_features
-  listResults$FilteredData              <- filtered_df %>% as.data.frame()
+  listResults$FilteredData              <- filtered_df %>% base::as.data.frame()
   listResults$IQRValues                 <- iqr_values
 
   listResults$ClusteringMethodInRows    <- clustering_distance_rows
