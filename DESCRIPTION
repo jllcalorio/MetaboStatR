@@ -6,21 +6,44 @@ Authors@R:
 Description: Perform Data Preprocessing, Bioinformatics and Statistical Data Analysis, and Data Visualization on Peak Intensities Data.
 License: MIT + file LICENSE
 Imports: 
+    caret,
     dplyr,
+    factoextra,
     ggplot2,
+    glmnet,
+    gridExtra,
+    Hmisc,
+    magrittr,
+    pheatmap,
+    pROC,
+    purrr,
+    RColorBrewer,
+    readxl,
+    stringr,
+    tibble,
     tidyr,
-    reshape2,
     vsn
 Suggests:
-    testthat,
+    BiocManager,
+    ggstatsplot,
+    grid,
     knitr,
+    openxlsx,
+    patchwork,
+    pmp,
     rmarkdown,
-    pmp
+    ropls,
+    rstudioapi,
+    testthat (>= 3.0.0),
+    tools
 Depends:
-    R (>= 4.4.1)
+    R (>= 4.4.0)
 biocViews:
 Remotes:
-    computational-metabolomics/pmp
+    bioc::pmp,
+    bioc::ropls,
+    bioc::vsn
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
+Config/testthat/edition: 3
