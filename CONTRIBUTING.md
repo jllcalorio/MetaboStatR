@@ -68,6 +68,11 @@ To contribute code, you will need a working R environment. Specific details on s
 
 If you have questions, need clarification, or want to discuss a potential contribution, please open an issue on the GitHub repository. I will do my best to provide timely support.
 
-## License
+## Dual License Agreement
 
-By contributing to `MetaboStatR`, you agree that your contributions will be licensed under the project's [License](https://github.com/jllcalorio/MetaboStatR/blob/main/LICENSE).
+By contributing to this project, you acknowledge and agree that:
+
+1. **Your contributions will be licensed under both licenses** [(MIT and Commercial)](https://github.com/jllcalorio/MetaboStatR/blob/main/LICENSE).
+2. **You grant the project maintainers** the right to license your contributions under both the open source MIT license and commercial licenses
+3. **You retain copyright** to your contributions
+4. **You confirm** that you have the right to make these contributions
