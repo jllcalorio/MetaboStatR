@@ -52,3 +52,24 @@ To use this R script, the data must be formatted as follows:
 **Example format:**
 
 Sample | Metabolite 1 | Metabolite 2 | ... | Metabolite N | Group | Batch
+
+# 📄 License
+
+MetaboStatR is available under a dual license:
+
+### Open Source License (MIT)
+- ✅ Free for open source projects
+- ✅ Free for research and educational use
+- ✅ Community contributions welcome
+- ✅ Modify and distribute freely
+
+### Commercial License
+- 💼 For commercial applications and products
+- 💼 For proprietary software integration
+- 💼 Includes priority support
+- 💼 Custom licensing terms available
+
+**Need a commercial license?** Contact me at [jllcalorio@gmail.com]
+
+### Contributing
+By contributing to this project, you agree that your contributions will be licensed under the same dual license terms.
