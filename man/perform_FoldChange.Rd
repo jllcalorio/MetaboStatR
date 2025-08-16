@@ -2,26 +2,95 @@
 % Please edit documentation in R/perform_FoldChange.R
 \name{perform_FoldChange}
 \alias{perform_FoldChange}
-\title{Perform Fold Change Analysis on a Preprocessed Data}
+\title{Perform Fold Change Analysis on Preprocessed Peak Data}
 \usage{
-perform_FoldChange(data, arrangeLevels = NULL, sortFC = TRUE)
+perform_FoldChange(
+  data,
+  arrangeLevels = NULL,
+  sortFC = TRUE,
+  qc_patterns = c("SQC", "EQC", "QC"),
+  min_samples_per_group = 2,
+  epsilon = 1e-08
+)
 }
 \arguments{
-\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function. It can also be from a data scaling technique.}
+\item{data}{List. A preprocessed data object returned by \code{perform_PreprocessingPeakData()}
+or similar preprocessing functions. Must contain:
+\itemize{
+\item \verb{$data_scaledPCA_rsdFiltered_varFiltered}: Numeric matrix/data.frame of peak data
+\item \verb{$Metadata}: Data.frame with at least a 'Group' column
+}}
 
-\item{arrangeLevels}{Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to \code{NULL} which sorts the groups in alphabetical order.}
+\item{arrangeLevels}{Character vector. Optional custom ordering for group levels.
+Must contain all unique group names present in the data (excluding QC samples).
+If \code{NULL} (default), groups are sorted alphabetically.}
 
-\item{sortFC}{Boolean. If \code{TRUE} (default), sorts the fold changes in descending order.}
+\item{sortFC}{Logical. If \code{TRUE} (default), sorts results by fold change values
+in descending order within each comparison.}
+
+\item{qc_patterns}{Character vector. Patterns to identify QC samples in the Group
+column. Default is \code{c("SQC", "EQC", "QC")}.}
+
+\item{min_samples_per_group}{Integer. Minimum number of samples required per group
+for analysis. Default is 2.}
+
+\item{epsilon}{Numeric. Small value added to prevent log(0) issues when data
+contains zeros or negative values. Default is 1e-8.}
 }
 \value{
-A list of data frames.
+A list containing:
+\item{FunctionOrigin}{Character. Function name for traceability}
+\item{data_Min_is_1}{Data.frame. Adjusted data with minimum value shifted to 1}
+\item{group_summary}{Data.frame. Summary of groups and sample counts}
+\item{comparison_matrix}{Matrix. All pairwise comparisons performed}
+\item{data_combined_GROUP1 vs. GROUP2}{Data.frame. Fold change results for each comparison}
 }
 \description{
-This function performs fold change analysis on a preprocessed Data.
+Performs pairwise fold change analysis on preprocessed metabolomics or proteomics
+peak data. The function calculates fold changes and log2 fold changes between all
+possible group pairs while excluding quality control (QC) samples. The analysis
+uses group means for comparison and includes options for custom group ordering
+and result sorting.
 }
-\examples{
-\dontrun{
-perform_FoldChange(data = results_from_perform_PreprocessingPeakData_function)
+\details{
+The function performs the following steps:
+\enumerate{
+\item Validates input data structure and parameters
+\item Filters out QC samples based on specified patterns
+\item Checks for sufficient samples per group
+\item Handles zero/negative values by adding appropriate shift
+\item Performs all pairwise group comparisons
+\item Calculates fold changes as mean(group1)/mean(group2)
+\item Computes log2 fold changes
+\item Optionally sorts results by fold change magnitude
+}
+}
+\section{Warning}{
+
+The function assumes that higher values indicate higher abundance/expression.
+Ensure your data is appropriately normalized before analysis.
 }
 
+\examples{
+\dontrun{
+# Basic usage with default parameters
+fc_results <- perform_FoldChange(preprocessed_data)
+
+# Custom group ordering and no sorting
+fc_results <- perform_FoldChange(
+  data = preprocessed_data,
+  arrangeLevels = c("Control", "Treatment1", "Treatment2"),
+  sortFC = FALSE
+)
+
+# Custom QC patterns
+fc_results <- perform_FoldChange(
+  data = preprocessed_data,
+  qc_patterns = c("QC", "Blank", "POOL")
+)
+}
+
+}
+\seealso{
+\code{\link{perform_PreprocessingPeakData}}
 }

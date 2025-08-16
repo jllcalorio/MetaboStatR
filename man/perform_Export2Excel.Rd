@@ -2,34 +2,153 @@
 % Please edit documentation in R/perform_Export2Excel.R
 \name{perform_Export2Excel}
 \alias{perform_Export2Excel}
-\title{Perform Export Data Frames to Excel}
+\title{Export Data Frames to Excel Workbook}
 \usage{
 perform_Export2Excel(
   results,
   folder_name = "Results_Folder",
-  file_name = "Results Exports"
+  file_name = "Results_Export",
+  include_timestamp = TRUE,
+  overwrite = TRUE,
+  row_names = TRUE,
+  freeze_first_row = TRUE,
+  auto_width = TRUE,
+  max_sheets = 255
 )
 }
 \arguments{
-\item{results}{List. A list of results from \code{perform_PreprocessingPeakData}, \code{perform_DimensionReduction}, or \code{perform_ComparativeAnalysis}, etc. There must only be one at a time. The list may or may not contain a data frame.}
+\item{results}{Either a named list containing data frames/tibbles, or multiple lists
+that can be passed as: results = list1, or results = c(list1, list2),
+or results = list(list1, list2, list3). Only data frames and tibbles will be exported,
+but empty data frames will still be included as worksheets.}
 
-\item{folder_name}{String. Creates a folder in the current working directory where the Excel file will be exported.}
+\item{folder_name}{Character string specifying the folder name where the Excel file(s)
+will be saved. The folder will be created if it doesn't exist. Default is "Results_Folder".}
 
-\item{file_name}{String. The file name of the results.}
+\item{file_name}{Character vector specifying the base name(s) of the Excel file(s) (without
+extension). If a single name is provided, it will be used for all lists. If multiple names
+are provided, each list will get its own file with the corresponding name. A timestamp
+will be automatically appended. Default is "Results_Export".}
+
+\item{include_timestamp}{Logical indicating whether to include a timestamp in the
+filename(s). Default is TRUE.}
+
+\item{overwrite}{Logical indicating whether to overwrite existing files. If FALSE and file
+exists, an error will be thrown. If TRUE but file is currently open in Excel, the function
+will detect this and provide a specific error message. Default is TRUE.}
+
+\item{row_names}{Logical indicating whether to include row names in the Excel output.
+Default is TRUE.}
+
+\item{freeze_first_row}{Logical indicating whether to freeze the first row (headers)
+in each worksheet. Default is TRUE.}
+
+\item{auto_width}{Logical indicating whether to auto-adjust column widths. Default is TRUE.}
+
+\item{max_sheets}{Integer specifying maximum number of worksheets to create per file.
+Default is 255 (Excel limit).}
 }
 \value{
-An Excel file.
+Invisibly returns a character vector of full paths to the created Excel file(s).
 }
 \description{
-This function exports the data frames from a list to Excel. The data frames are detected automatically. All data frames
-in a list are combined in one (1) Excel file.
+Exports data frames from named lists or multiple lists to multi-sheet Excel workbooks.
+The function automatically detects data frames and tibbles within the input, creates
+appropriately named worksheets, and handles various edge cases including sheet name
+length restrictions, duplicate names, and invalid characters. Each data frame becomes
+a separate worksheet in the output Excel file. The function can accept either a single
+named list or multiple lists, and will create separate Excel files for each list when
+multiple file names are provided.
 }
-\examples{
-\dontrun{
-perform_Export2Excel(
-  results     = results_from_perform_Regression_function,
-  folder_name = "Regression Results Folder",
-  file_name   = "Regression_Results_Filename_no_extension")
+\details{
+The function performs the following operations:
+\itemize{
+\item Validates and processes input parameters (single list or multiple lists)
+\item Processes multiple lists and creates separate files when multiple file names provided
+\item Filters the list(s) to include only data frames and tibbles (including empty ones)
+\item Sanitizes sheet names to comply with Excel naming conventions
+\item Creates multi-sheet Excel workbook(s) with formatted headers
+\item Applies optional formatting (frozen headers, auto-width columns)
+\item Saves the workbook(s) with optional timestamps
+\item Detects if Excel files are currently open and provides specific error messages
 }
 
+Multiple list and file handling:
+\itemize{
+\item If single file_name provided: all lists merged into one Excel file
+\item If multiple file_names provided: each list becomes a separate Excel file
+\item If more lists than file names: remaining lists use the last file name with suffixes
+\item Empty data frames are included as worksheets (preserving structure information)
+}
+
+Sheet names are automatically sanitized to:
+\itemize{
+\item Remove or replace invalid characters
+\item Ensure uniqueness by appending numbers to duplicates
+\item Truncate names exceeding 31 characters (Excel limit)
+\item Preserve readability by intelligently shortening names
+}
+}
+\section{Dependencies}{
+
+Requires the \code{openxlsx} package for Excel file operations.
+}
+
+\examples{
+\dontrun{
+# Create sample data
+list1 <- list(
+  summary_stats = data.frame(mean = c(1, 2, 3), sd = c(0.1, 0.2, 0.3)),
+  raw_data = data.frame(x = 1:10, y = rnorm(10)),
+  empty_data = data.frame()  # This will still be included
+)
+
+list2 <- list(
+  processed_data = data.frame(a = 1:5, b = letters[1:5]),
+  metadata = "This will be ignored"
+)
+
+list3 <- list(
+  final_results = data.frame(value = runif(8), category = LETTERS[1:8])
+)
+
+# Method 1: Single list, single file
+perform_Export2Excel(results = list1, file_name = "Analysis_Results")
+
+# Method 2: Multiple lists, single file (all merged)
+perform_Export2Excel(
+  results = c(list1, list2, list3),
+  file_name = "Combined_Analysis"
+)
+
+# Method 3: Multiple lists, multiple files (separate files)
+perform_Export2Excel(
+  results = c(list1, list2, list3),
+  file_name = c("Analysis", "Processing", "Final_Results")
+)
+
+# Method 4: Multiple lists, partial file names
+perform_Export2Excel(
+  results = c(list1, list2, list3),
+  file_name = c("Primary_Analysis", "Secondary_Analysis")
+  # list3 will use "Secondary_Analysis_2"
+)
+
+# Advanced usage with custom options
+perform_Export2Excel(
+  results = c(list1, list2),
+  folder_name = "Analysis_Results",
+  file_name = c("Dataset_A", "Dataset_B"),
+  include_timestamp = FALSE,
+  row_names = TRUE,
+  freeze_first_row = TRUE,
+  auto_width = TRUE,
+  max_sheets = 50
+)
+}
+
+}
+\seealso{
+\code{\link[openxlsx]{createWorkbook}}, \code{\link[openxlsx]{addWorksheet}},
+\code{\link[openxlsx]{writeData}}
 }

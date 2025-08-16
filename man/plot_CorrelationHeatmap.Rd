@@ -2,90 +2,151 @@
 % Please edit documentation in R/plot_CorrelationHeatmap.R
 \name{plot_CorrelationHeatmap}
 \alias{plot_CorrelationHeatmap}
-\title{Plot Correlational Heatmaps}
+\title{Plot Correlation and Hierarchical Clustering Heatmaps}
 \usage{
 plot_CorrelationHeatmap(
   data,
-  method = c("pearson", "spearman", "kendall")[1],
+  method = "pearson",
   plot_top_n = 1000,
-  plot_what = c("Samples", "Features")[2],
-  plot_type = c("correlation", "hierarchical")[1],
+  plot_what = "Features",
+  plot_type = "correlation",
   show_rownames = TRUE,
   show_colnames = TRUE,
-  clustering_distance_rows = c("euclidean", "maximum", "manhattan", "canberra", "binary",
-    "minkowski")[1],
-  clustering_distance_cols = c("euclidean", "maximum", "manhattan", "canberra", "binary",
-    "minkowski")[1],
-  clustering_method = c("ward.D", "ward.D2", "single", "complete", "average", "mcquitty",
-    "median", "centroid")[1]
+  clustering_distance_rows = "euclidean",
+  clustering_distance_cols = "euclidean",
+  clustering_method = "ward.D",
+  significance_threshold = 0.05,
+  color_palette = c("blue", "white", "red"),
+  fontsize_main = 12,
+  fontsize_labels = 8
 )
 }
 \arguments{
-\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function. It can also be from a data scaling technique.}
+\item{data}{A list object containing preprocessed data. Must include a component
+named \code{data_scaledPCA_rsdFiltered_varFiltered} (typically output from
+\code{perform_PreprocessingPeakData} function).}
 
-\item{method}{String. Specifies the correlation method to be used.
+\item{method}{Character string specifying the correlation method. One of:
 \itemize{
-\item "pearson": Uses Pearson r.
-\item "spearman": Uses Spearman rho.
-\item "kendall": Uses Kendall tau.
-}
-Defaults to "pearson".}
+\item \code{"pearson"}: Pearson product-moment correlation (default)
+\item \code{"spearman"}: Spearman's rank correlation
+\item \code{"kendall"}: Kendall's tau correlation
+}}
 
-\item{plot_top_n}{Numeric. Specifies the top n features/samples to be plotted.}
+\item{plot_top_n}{Positive integer specifying the number of top variable
+features/samples to include in the plot. Must be > 0. Default is 1000.}
 
-\item{plot_what}{String. Specifies if Sample or Features are to be plotted.
+\item{plot_what}{Character string specifying what to plot. One of:
 \itemize{
-\item "Samples": Plots the samples.
-\item "Features": Plots the features.
-}
-Defaults to "Features".}
+\item \code{"Features"}: Plot correlations between features (default)
+\item \code{"Samples"}: Plot correlations between samples
+}}
 
-\item{plot_type}{String. Specifies the type of plot.
+\item{plot_type}{Character string specifying the plot type. One of:
 \itemize{
-\item "correlation": Correlational plot.
-\item "hierarchical": Hierarchical plot.
-}
-Defaults to "correlation".}
+\item \code{"correlation"}: Correlation heatmap with significance masking (default)
+\item \code{"hierarchical"}: Hierarchical clustering heatmap of raw values
+}}
 
-\item{show_rownames}{Boolean. If \code{TRUE} (default), shows the row names.}
+\item{show_rownames}{Logical. Whether to display row names. Default is \code{TRUE}.}
 
-\item{show_colnames}{Boolean. If \code{TRUE} (default), shows the column names.}
+\item{show_colnames}{Logical. Whether to display column names. Default is \code{TRUE}.}
 
-\item{clustering_distance_rows}{String. Specifies the clustering distance in the rows. See \code{?dist} for more info.
+\item{clustering_distance_rows}{Character string specifying the distance metric
+for row clustering. See \code{\link[stats]{dist}} for details. One of:
+\code{"euclidean"} (default), \code{"maximum"}, \code{"manhattan"},
+\code{"canberra"}, \code{"binary"}, \code{"minkowski"}.}
+
+\item{clustering_distance_cols}{Character string specifying the distance metric
+for column clustering. Same options as \code{clustering_distance_rows}.
+Default is \code{"euclidean"}.}
+
+\item{clustering_method}{Character string specifying the clustering algorithm.
+See \code{\link[stats]{hclust}} for details. One of:
 \itemize{
-\item "euclidean": Usual distance between the two vectors.
-\item "maximum": Maximum distance between two components of \code{x} and \code{y} (supremum norm)
-\item "manhattan": Absolute distance between the two vectors (1 norm aka L_1). (L_1 = L subscript 1)
-\item "canberra": Terms with zero numerator and denominator are omitted from the sum and treated as if the values were missing. This is intended for non-negative values (e.g., counts), in which case the denominator can be written in various equivalent ways.
-\item "binary": (aka asymmetric binary): The vectors are regarded as binary bits, so non-zero elements are ‘on’ and zero elements are ‘off’. The distance is the proportion of bits in which only one is on amongst those in which at least one is on. This also called “Jaccard” distance in some contexts. Here, two all-zero observations have distance 0, whereas in traditional Jaccard definitions, the distance would be undefined for that case and give NaN numerically.
-\item "minkowski": The \code{p} norm, the \code{p-th} root of the sum of the \code{p-th} powers of the differences of the components.
-}
-Defaults to "euclidean".}
+\item \code{"ward.D"}: Ward's minimum variance method (default)
+\item \code{"ward.D2"}: Implements Ward's (1963) criterion
+\item \code{"single"}: Single linkage clustering
+\item \code{"complete"}: Complete linkage clustering
+\item \code{"average"}: UPGMA clustering
+\item \code{"mcquitty"}: WPGMA clustering
+\item \code{"median"}: WPGMC clustering
+\item \code{"centroid"}: UPGMC clustering
+}}
 
-\item{clustering_distance_cols}{String. Specifies the clustering distance in the columns. Same as in \code{clustering_distance_rows}. Defaults to "euclidean".}
+\item{significance_threshold}{Numeric value between 0 and 1 specifying the
+p-value threshold for significance masking in correlation plots.
+Default is 0.05.}
 
-\item{clustering_method}{Specifies the clustering method. See \code{?hclust} for more info.
-\itemize{
-\item "ward.D": Ward's minimum variance method aims at finding compact, spherical clusters. Does not implement Ward's (1963) clustering criterion.
-\item "ward.D2" Implements that criterion (Murtagh and Legendre 2014). The dissimilarities are squared before cluster updating.
-\item "single": Closely related to the minimal spanning tree. Adopts a ‘friends of friends’ clustering strategy.
-\item "complete": Finds similar clusters.
-\item "average": Same as UPGMA.
-\item "mcquitty": Same as WPGMA.
-\item "median": Same as WPGMC. Does not lead to a monotone distance measure, or equivalently the resulting dendrograms can have so called inversions or reversals which are hard to interpret, but note the trichotomies in Legendre and Legendre (2012).
-\item "centroid": Same as UPGMC. Does not lead ... Legendre and Legendre (2012) (same as \code{median}).
-}
-Defaults to "ward.D".}
+\item{color_palette}{Character vector of length 3 specifying colors for
+negative correlations, neutral/non-significant, and positive correlations.
+Default is \code{c("blue", "white", "red")}.}
+
+\item{fontsize_main}{Numeric value for main title font size. Default is 12.}
+
+\item{fontsize_labels}{Numeric value for axis label font size. Default is 8.}
 }
 \value{
-A lsit containing the filtered data frame, methods used, the plot selected, and other metadata.
+A list containing:
+\describe{
+\item{\code{plot}}{The generated heatmap plot object}
+\item{\code{filtered_data}}{Data frame of filtered data used for plotting}
+\item{\code{correlation_matrix}}{Correlation matrix (correlation plots only)}
+\item{\code{p_values}}{Matrix of p-values (correlation plots only)}
+\item{\code{top_features}}{Names of selected top variable features/samples}
+\item{\code{iqr_values}}{Data frame of IQR values for all features/samples}
+\item{\code{parameters}}{List of all function parameters used}
+\item{\code{summary_stats}}{Summary statistics of the analysis}
+}
 }
 \description{
-This function plots correlational heatmaps based on several correlation and clustering methods. The plots are filtered based on the top samples/features/metabolites having the highest variability among groups.
+Generates correlation or hierarchical clustering heatmaps with advanced filtering
+capabilities. The function creates publication-ready visualizations by selecting
+the most variable features/samples based on interquartile range (IQR) and applies
+statistical significance masking for correlation plots.
+}
+\details{
+The function performs the following steps:
+\enumerate{
+\item Validates input parameters and data structure
+\item Calculates interquartile ranges (IQR) to identify most variable features/samples
+\item Selects top N most variable features/samples based on IQR
+\item For correlation plots: computes correlation matrix with p-values and applies significance masking
+\item For hierarchical plots: uses raw filtered data with clustering
+\item Generates publication-ready heatmap with customizable aesthetics
+}
+
+For correlation plots, non-significant correlations (p >= significance_threshold)
+are displayed as neutral color (white by default) to highlight statistically
+significant relationships.
 }
 \examples{
 \dontrun{
-plot_CorrelationHeatmap(data = results_from_perform_PreprocessingPeakData_function)
+# Basic correlation heatmap
+result <- plot_CorrelationHeatmap(
+  data = preprocessed_data,
+  method = "pearson",
+  plot_top_n = 500
+)
+
+# Hierarchical clustering of samples
+result <- plot_CorrelationHeatmap(
+  data = preprocessed_data,
+  plot_what = "Samples",
+  plot_type = "hierarchical",
+  clustering_method = "ward.D2"
+)
+
+# Custom correlation plot with Spearman correlation
+result <- plot_CorrelationHeatmap(
+  data = preprocessed_data,
+  method = "spearman",
+  significance_threshold = 0.01,
+  color_palette = c("darkblue", "grey90", "darkred")
+)
 }
 
+}
+\seealso{
+\code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}}
 }

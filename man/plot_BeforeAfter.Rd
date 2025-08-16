@@ -2,49 +2,89 @@
 % Please edit documentation in R/plot_BeforeAfter.R
 \name{plot_BeforeAfter}
 \alias{plot_BeforeAfter}
-\title{Plot Random Data Before and After Preprocessing}
+\title{Visualize Data Before and After Preprocessing}
 \usage{
 plot_BeforeAfter(
   data,
-  scaled = "OPLS-DA",
+  scaled = "PLS",
   group_by = "Sample",
-  n_random_samples = 30,
-  n_random_features = 30
+  n_random_samples = 30L,
+  n_random_features = 30L,
+  seed = 123L
 )
 }
 \arguments{
-\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function.}
+\item{data}{List. A preprocessing results object from \code{perform_PreprocessingPeakData}
+function containing original data, transformed data, and metadata.}
 
-\item{scaled}{String. Choose one below to plot one of the final results from the data preprocessing.
+\item{scaled}{Character. Specifies which preprocessed data to visualize:
 \itemize{
-\item 'PCA: Plots results from PCA.
-\item 'OPLS-DA': Plots results from OPLS-DA.
+\item \code{"PCA"}: Uses PCA-scaled preprocessed data
+\item \code{"PLS"}: Uses PLS-scaled preprocessed data
 }
-Defaults to "OPLS-DA".}
+Default: \code{"PLS"}}
 
-\item{group_by}{String. Whether to plot the "Samples" or the "Features".
+\item{group_by}{Character. Visualization perspective:
 \itemize{
-\item 'Sample: Plots the samples.
-\item 'Feature': Plots the features.
+\item \code{"Sample"}: Visualizes sample-wise distributions
+\item \code{"Feature"}: Visualizes feature-wise distributions
 }
-Defaults to "Sample".}
+Default: \code{"Sample"}}
 
-\item{n_random_samples}{Numeric. The number of random 'samples' to be created with box plots. If \code{NULL}, plots all. Defaults to 30, or the samples exceeds 30.}
+\item{n_random_samples}{Integer. Number of random samples to display in box plots.
+If \code{NULL}, uses all samples. If specified number exceeds total samples,
+uses all available samples. Default: \code{30}}
 
-\item{n_random_features}{Numeric. The number of random 'features' to be created with box plots. If \code{NULL}, plots all. Defaults to 30, or the features exceeds 30.}
+\item{n_random_features}{Integer. Number of random features to display in box plots.
+If \code{NULL}, uses all features. If specified number exceeds total features,
+uses all available features. Default: \code{30}}
+
+\item{seed}{Integer. Random seed for reproducible sample/feature selection.
+Default: \code{123}}
 }
 \value{
-A list of plots of the before and after data preprocessing.
+List containing:
+\itemize{
+\item \code{FunctionOrigin}: Character indicating function source
+\item \code{data_before}: Matrix of original data (non-QC samples)
+\item \code{data_after}: Matrix of transformed data (non-QC samples)
+\item \code{plot_density_before}: ggplot2 density plot of original data
+\item \code{plot_density_after}: ggplot2 density plot of transformed data
+\item \code{plot_box_before}: ggplot2 box plot of original data
+\item \code{plot_box_after}: ggplot2 box plot of transformed data
+\item \code{plot_combined}: Combined 2x2 grid plot
+\item \code{processing_info}: List with processing metadata
+}
 }
 \description{
-This function will plot random samples or features the before and after data preprocessing.
+Creates comprehensive visualizations comparing data distributions and patterns
+before and after preprocessing steps. Generates density plots and box plots
+from either sample or feature perspectives to assess preprocessing effectiveness.
+Supports both PCA and PLS scaled data visualization with intelligent
+random sampling for large datasets.
 }
 \examples{
 \dontrun{
-plot_BeforeAfter(
-  data     = results_from_perform_PreprocessingPeakData_function,
-  scaled   = "OPLS-DA",
+# Basic usage with PLS scaling
+plots <- plot_BeforeAfter(
+  data = preprocessing_results,
+  scaled = "PLS",
   group_by = "Sample"
 )
+
+# Feature perspective with PCA scaling
+feature_plots <- plot_BeforeAfter(
+  data = preprocessing_results,
+  scaled = "PCA",
+  group_by = "Feature",
+  n_random_features = 20
+)
+
+# Display combined plot
+print(plots$plot_combined)
 }
+
+}
+\seealso{
+\code{\link{perform_PreprocessingPeakData}}
 }

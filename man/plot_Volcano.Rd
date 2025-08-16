@@ -2,7 +2,7 @@
 % Please edit documentation in R/plot_Volcano.R
 \name{plot_Volcano}
 \alias{plot_Volcano}
-\title{Plot Volcano Plot}
+\title{Create Volcano Plots for Differential Expression Analysis}
 \usage{
 plot_Volcano(
   PPData,
@@ -11,37 +11,106 @@ plot_Volcano(
   arrangeLevels = NULL,
   fcUP = 2,
   fcDown = 0.5,
-  adjpvalue = 0.05
+  adjpvalue = 0.05,
+  show_plots = TRUE,
+  verbose = TRUE
 )
 }
 \arguments{
-\item{PPData}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function.}
+\item{PPData}{A list object returned by \code{perform_PreprocessingPeakData()}.
+Must contain a \code{Metadata} component with a \code{Group} column.}
 
-\item{FCData}{List. This list must be a result from the \code{perform_FoldChange} function.}
+\item{FCData}{A list object returned by \code{perform_FoldChange()}.
+Must contain fold change data for group comparisons.}
 
-\item{CAData}{List. This list must be a result from the \code{perform_ComparativeAnalysis} function.}
+\item{CAData}{A list object returned by \code{perform_ComparativeAnalysis()}.
+Must contain a \code{results} component with p-values and adjusted p-values.}
 
-\item{arrangeLevels}{Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to \code{NULL} which sorts the groups in alphabetical order. Suggests to be inputted (control, case1, case2) where case2 is worse than case1 e.g., Severe dengue than Non-severe dengue.}
+\item{arrangeLevels}{A character vector specifying the order of group levels.
+Format: \code{c('group1', 'group2', ...)}. If \code{NULL} (default),
+groups are sorted alphabetically. Recommended order: control, case1, case2
+(e.g., Control, Non-severe dengue, Severe dengue).}
 
-\item{fcUP}{Numeric. The threshold for the upper fold change to be considered.}
+\item{fcUP}{A numeric value specifying the upper fold change threshold for
+significance. Features with fold change >= \code{fcUP} are considered
+upregulated. Default: 2.}
 
-\item{fcDown}{Numeric. The threshold for the lower fold change to be considered.}
+\item{fcDown}{A numeric value specifying the lower fold change threshold for
+significance. Features with fold change <= \code{fcDown} are considered
+downregulated. Default: 0.5.}
 
-\item{adjpvalue}{Numeric. The adjusted p-value threshold.}
+\item{adjpvalue}{A numeric value specifying the adjusted p-value threshold
+for significance. Default: 0.05.}
+
+\item{show_plots}{A logical value indicating whether to display plots.
+Default: \code{TRUE}.}
+
+\item{verbose}{A logical value indicating whether to print progress messages.
+Default: \code{TRUE}.}
 }
 \value{
-Returns a list of data used in the analysis, volcano plot data, and the plot.
+A list containing:
+\describe{
+\item{FunctionOrigin}{Character string identifying the source function}
+\item{Parameters}{List of input parameters used}
+\item{VolcanoPlots}{Named list of ggplot2 objects, one for each comparison}
+\item{VolcanoData_\link{Comparison}}{Data frame with complete volcano plot data for each comparison}
+\item{VolcanoData_filtered_\link{Comparison}}{Data frame with significant features only for each comparison}
+\item{Summary}{Summary statistics for each comparison}
+}
 }
 \description{
-This function plots a volcano plot.
+Generates volcano plots to visualize the results of differential expression analysis
+by plotting log2 fold changes against negative log10 adjusted p-values. The function
+creates plots for all pairwise group comparisons and applies significance thresholds
+to highlight upregulated, downregulated, and non-significant features.
+}
+\details{
+The function performs the following steps:
+\enumerate{
+\item Validates input data structures and parameters
+\item Extracts non-QC samples from the metadata
+\item Creates all possible pairwise group comparisons
+\item Merges fold change and statistical test results
+\item Applies significance thresholds to classify features
+\item Generates volcano plots with customizable thresholds
+\item Returns comprehensive results including plots and data
+}
+
+Features are classified as:
+\itemize{
+\item \strong{Upregulated}: Fold change >= \code{fcUP} AND adjusted p-value < \code{adjpvalue}
+\item \strong{Downregulated}: Fold change <= \code{fcDown} AND adjusted p-value < \code{adjpvalue}
+\item \strong{Not Significant}: All other features
+}
 }
 \examples{
 \dontrun{
-plot_Volcano(
-  PPData    = results_from_perform_PreprocessingPeakData_function,
-  FCData    = results_from_perform_FoldChange_function,
-  CAData    = results_from_perform_ComparativeAnalysis_function
+# Basic usage with default parameters
+volcano_results <- plot_Volcano(
+  PPData = preprocess_results,
+  FCData = foldchange_results,
+  CAData = comparative_results
 )
+
+# With custom thresholds and group ordering
+volcano_results <- plot_Volcano(
+  PPData = preprocess_results,
+  FCData = foldchange_results,
+  CAData = comparative_results,
+  arrangeLevels = c("Control", "Treatment1", "Treatment2"),
+  fcUP = 1.5,
+  fcDown = 0.67,
+  adjpvalue = 0.01
+)
+
+# Access specific results
+plot_obj <- volcano_results$VolcanoPlots[["Control vs. Treatment1"]]
+sig_features <- volcano_results$VolcanoData_filtered_Control_vs._Treatment1
 }
 
+}
+\seealso{
+\code{\link{perform_PreprocessingPeakData}}, \code{\link{perform_FoldChange}},
+\code{\link{perform_ComparativeAnalysis}}
 }

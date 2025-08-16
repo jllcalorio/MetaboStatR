@@ -2,7 +2,7 @@
 % Please edit documentation in R/perform_AUROC.R
 \name{perform_AUROC}
 \alias{perform_AUROC}
-\title{Perform Area Under the Receiver Operating Characteristic (AUROC)}
+\title{Perform Area Under the Receiver Operating Characteristic Curve Analysis}
 \usage{
 perform_AUROC(
   data_PP,
@@ -14,54 +14,129 @@ perform_AUROC(
   fcUP = 2,
   fcDown = 0.5,
   adjpvalue = 0.05,
-  direction = c("auto", ">", "<")[1],
-  top_n = 5,
-  plot_iden_met = NULL
+  direction = "auto",
+  top_n = 5L,
+  plot_iden_met = NULL,
+  confidence_level = 0.95,
+  min_group_size = 3L
 )
 }
 \arguments{
-\item{data_PP}{List. This list must be a result from the \code{performPreprocessingPeakData} function.}
+\item{data_PP}{List. Results from the \code{performPreprocessingPeakData} function.
+Must contain \code{$Metadata} with \code{$Group} column and
+\code{$data_scaledPCA_rsdFiltered_varFiltered} matrix.}
 
-\item{data_DR}{List. This list must be a result from the \code{performDimensionReduction} function, specifically from OPLS-DA.}
+\item{data_DR}{List. Results from the \code{performDimensionReduction} function
+(OPLS-DA). Must contain VIP score data frames with naming pattern
+\code{data_VIPScores_[group1] vs. [group2]}.}
 
-\item{data_FC}{List. This list must be a result from the \code{performFoldChange} function.}
+\item{data_FC}{List. Results from the \code{performFoldChange} function. Must
+contain fold change data frames with naming pattern
+\code{data_combined_[group1] vs. [group2]}.}
 
-\item{data_CA}{List. This list must be a result from the \code{performComparativeAnalysis} function.}
+\item{data_CA}{List. Results from the \code{performComparativeAnalysis} function.
+Must contain \code{$results} data frame with adjusted p-values.}
 
-\item{arrangeLevels}{Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to \code{NULL} which sorts the groups in alphabetical order. Suggests to be inputted (control, case1, case2) where case2 is worse than case1 e.g., Severe dengue than Non-severe dengue.}
+\item{arrangeLevels}{Character vector or NULL. Specifies the order of groups
+for analysis (e.g., \code{c("Control", "Case1", "Case2")}). When NULL,
+groups are sorted alphabetically. It is recommended to arrange from least
+severe to most severe condition (e.g., "Control", "Mild", "Severe").}
 
-\item{VIPmin}{Numeric. Minimum VIP score to consider.}
+\item{VIPmin}{Numeric. Minimum Variable Importance in Projection (VIP) score
+threshold for feature selection. Features with VIP < VIPmin are excluded.
+Default: 1.0.}
 
-\item{fcUP}{Numeric. Minimum fold change to consider feature as up-regulated.}
+\item{fcUP}{Numeric. Minimum fold change threshold for up-regulated features.
+Features with fold change >= fcUP are considered up-regulated. Default: 2.0.}
 
-\item{fcDown}{Numeric. Maximum fold change to consider feature as down-regulated.}
+\item{fcDown}{Numeric. Maximum fold change threshold for down-regulated features.
+Features with fold change <= fcDown are considered down-regulated. Default: 0.5.}
 
-\item{adjpvalue}{Numeric. Defaults to 0.05. Defines the adjusted p-value threshold.}
+\item{adjpvalue}{Numeric. Adjusted p-value threshold for statistical significance.
+Features with adjusted p-value >= adjpvalue are excluded. Default: 0.05.}
 
-\item{direction}{Defines the direction in AUROC. See more details in \code{?pROC::roc}. The \code{>} and \code{<} are used when resampling or randomizing the data.
+\item{direction}{Character. Direction parameter for ROC analysis. Options:
 \itemize{
-\item "auto": Dynamically change the direction of which group is higher.
-\item ">": if the predictor values for the control group are higher than the values of the case group will be applied
-\item "<": otherwise of ">".
+\item \code{"auto"}: Automatically determines optimal direction
+\item \code{">"}: Use when predictor values for control group > case group
+\item \code{"<"}: Use when predictor values for control group < case group
 }
-Defaults to ">".}
+See \code{\link[pROC]{roc}} for details. Default: "auto".}
 
-\item{top_n}{Numeric. Defines the features with the highest AUC. Defaults to plotting the top 5.}
+\item{top_n}{Integer. Number of top features (by AUC) to display in ROC plots.
+Must be positive. Default: 5.}
 
-\item{plot_iden_met}{Boolean. If \code{TRUE}, plots the identified metabolites, one-by-one. Defaults to \code{NULL}.}
+\item{plot_iden_met}{Character vector or NULL. Specific metabolite names to plot
+individually. When provided, generates separate ROC plots for each specified
+metabolite regardless of filtering criteria. Default: NULL.}
+
+\item{confidence_level}{Numeric. Confidence level for AUC confidence intervals.
+Must be between 0 and 1. Default: 0.95.}
+
+\item{min_group_size}{Integer. Minimum number of samples required per group
+for ROC analysis. Default: 3.}
 }
 \value{
-Returns a list of results and plots if requested.
+A list containing the following components:
+\itemize{
+\item \code{FunctionOrigin}: Character indicating the source function
+\item \code{data_Merged_[comparison]}: Merged data frames for each group comparison
+\item \code{data_Filtered_[comparison]}: Filtered data matrices for each comparison
+\item \code{data_results_[comparison]}: AUROC results data frames
+\item \code{plots}: List of combined ROC plots for top features
+\item \code{plots_identifiedMetabolites}: Individual plots for specified metabolites (if requested)
+\item \code{summary}: Overall summary statistics
+}
 }
 \description{
-This function performs the AUROC analysis using the data from data processing, dimension-reduction,
-fold change analysis, and comparative analysis. Data will be automatically selected from those lists.
+Performs comprehensive Area Under the Receiver Operating Characteristic (AUROC)
+analysis for metabolomics data. This function integrates results from data
+preprocessing, dimension reduction (OPLS-DA), fold change analysis, and
+comparative analysis to identify and visualize discriminative metabolic features
+between different groups. The function automatically filters features based on
+Variable Importance in Projection (VIP) scores, fold change thresholds, and
+statistical significance, then generates ROC curves for the most discriminative features.
+}
+\details{
+The function performs the following steps:
+\enumerate{
+\item Validates input data and parameters
+\item Excludes quality control (QC) samples
+\item Generates all possible pairwise group combinations
+\item For each comparison, merges VIP, fold change, and statistical data
+\item Filters features based on specified thresholds
+\item Computes ROC curves and AUC values with confidence intervals
+\item Generates publication-ready plots
+\item Optionally creates individual plots for specified metabolites
+}
 }
 \examples{
 \dontrun{
-  data_PP = results_from_performPreprocessingPeakData_function,
-  data_DR = results_from_performDimensionReduction_function,
-  data_FC = results_from_performFoldChange_function,
-  data_CA = results_from_performComparativeAnalysis_function
+# Basic usage
+auroc_results <- perform_AUROC(
+  data_PP = preprocessing_results,
+  data_DR = dimension_reduction_results,
+  data_FC = fold_change_results,
+  data_CA = comparative_analysis_results
+)
+
+# Advanced usage with custom parameters
+auroc_results <- perform_AUROC(
+  data_PP = preprocessing_results,
+  data_DR = dimension_reduction_results,
+  data_FC = fold_change_results,
+  data_CA = comparative_analysis_results,
+  arrangeLevels = c("Control", "Mild", "Severe"),
+  VIPmin = 1.5,
+  fcUP = 1.5,
+  fcDown = 0.67,
+  adjpvalue = 0.01,
+  top_n = 10,
+  plot_iden_met = c("Metabolite1", "Metabolite2")
+)
 }
+
+}
+\seealso{
+\code{\link[pROC]{roc}}, \code{\link[pROC]{auc}}, \code{\link[pROC]{ci}}
 }

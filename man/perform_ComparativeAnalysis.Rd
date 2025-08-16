@@ -2,51 +2,125 @@
 % Please edit documentation in R/perform_ComparativeAnalysis.R
 \name{perform_ComparativeAnalysis}
 \alias{perform_ComparativeAnalysis}
-\title{Perform Comparative Statistical Analysis on a Preprocessed Data}
+\title{Perform Comparative Statistical Analysis on Preprocessed Metabolomics Data}
 \usage{
 perform_ComparativeAnalysis(
   data,
-  adjust_p_method = c("holm", "hochberg", "hommel", "bonferroni", "BH", "BY", "fdr",
-    "none")[5],
+  adjust_p_method = "BH",
   sort_p = TRUE,
   paired = FALSE,
-  plot_iden_met = NULL
+  plot_metabolites = NULL,
+  alpha = 0.05,
+  min_group_size = 3,
+  verbose = FALSE
 )
 }
 \arguments{
-\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function.}
-
-\item{adjust_p_method}{String. The p-value correction method. Defaults to "BH". Read more at \code{?p.adjust}.
+\item{data}{List. Output from \code{perform_PreprocessingPeakData} function containing:
 \itemize{
-\item "holm": Holm (1979). Less conservative than "bonferroni".
-\item "hochberg": Hochberg (1988). Less conservative than "bonferroni".
-\item "hommel": Hommel (1988). Less conservative than "bonferroni".
-\item "bonferroni": Bonferroni correction. The p-values are multiplied by the number of comparisons.
-\item "BH": Benjamini & Hochberg (1995). Less conservative than "bonferroni".
-\item "BY": Benjamini & Yekutieli (2001). Less conservative than "bonferroni".
-\item "fdr": Same as "BH".
-\item "none":
-}
-Note: The first four methods are designed to give strong control of the family-wise error rate. There seems no reason to use the unmodified Bonferroni correction because it is dominated by Holm's method, which is also valid under arbitrary assumptions. Hochberg's and Hommel's methods are valid when the hypothesis tests are independent or when they are non-negatively associated ( Sarkar, 1998; Sarkar and Chang, 1997). Hommel's method is more powerful than Hochberg's, but the difference is usually small and the Hochberg p-values are faster to compute. The "BH" (aka "fdr") and "BY" methods of Benjamini, Hochberg, and Yekutieli control the false discovery rate, the expected proportion of false discoveries amongst the rejected hypotheses. The false discovery rate is a less stringent condition than the family-wise error rate, so these methods are more powerful than the others.}
+\item \code{data_scaledPCA_rsdFiltered_varFiltered}: Numeric matrix of processed metabolite data
+\item \code{Metadata}: Data frame with sample metadata including 'Group' column
+}}
 
-\item{sort_p}{Boolean. If \code{TRUE} (default), sorts the adjusted p-values in ascending order.}
+\item{adjust_p_method}{Character. Method for p-value adjustment. Default is "BH".
+Options include:
+\itemize{
+\item "holm": Holm (1979) - Controls family-wise error rate
+\item "hochberg": Hochberg (1988) - Less conservative than Bonferroni
+\item "hommel": Hommel (1988) - More powerful than Hochberg
+\item "bonferroni": Classical Bonferroni correction
+\item "BH": Benjamini & Hochberg (1995) - Controls false discovery rate
+\item "BY": Benjamini & Yekutieli (2001) - More conservative FDR control
+\item "fdr": Alias for "BH"
+\item "none": No adjustment
+}}
 
-\item{paired}{Boolean. If \code{TRUE}, this instructs the function that the data is paired, not independent. All p-values are adjusted using Bonferroni and Hochberg method.}
+\item{sort_p}{Logical. If \code{TRUE} (default), results are sorted by adjusted p-values
+in ascending order.}
 
-\item{plot_iden_met}{Boolean. Setting this to \code{TRUE} will output a plot of the identified metabolites using \code{ggstatsplot} packagge, which means that statistical tests and p-values are displayed in the plot.}
+\item{paired}{Logical. If \code{TRUE}, performs paired sample tests. Default is \code{FALSE}.
+Note: Requires equal group sizes for multi-group comparisons.}
+
+\item{plot_metabolites}{Character vector. Names of metabolites to visualize. If provided,
+generates statistical plots using \code{ggstatsplot}. Default is \code{NULL} (no plots).}
+
+\item{alpha}{Numeric. Significance threshold for assumption tests. Default is 0.05.}
+
+\item{min_group_size}{Integer. Minimum required sample size per group. Default is 3.}
+
+\item{verbose}{Logical. If \code{TRUE}, prints detailed progress information. Default is \code{FALSE}.}
 }
 \value{
-A list of data frames and plots, if requested.
+List containing:
+\itemize{
+\item \code{results}: Data frame with statistical test results for each metabolite
+\item \code{plots}: List of ggplot objects (if \code{plot_metabolites} specified)
+\item \code{summary}: Summary statistics of the analysis
+\item \code{assumptions}: Results of assumption tests
+\item \code{metadata}: Analysis metadata and parameters used
+}
 }
 \description{
-This function performs comparative analysis based on the characteristics of the data. This means that this function
-checks for the assumptions first before proceeding with the statistical analysis. The tests include t-tests and
-Analysis of Variance (ANOVA), and its types such as paired samples t-test, and their nonparametric counterparts such as
-Mann-Whitney U test, Kruskal-Wallis test, etc.
+Conducts comprehensive comparative statistical analysis on preprocessed metabolomics data.
+The function automatically selects appropriate statistical tests based on data characteristics
+including normality, variance homogeneity, and sample independence. Supports both two-group
+and multi-group comparisons with parametric and non-parametric alternatives.
+}
+\details{
+The function performs the following workflow:
+\enumerate{
+\item Validates input data structure and parameters
+\item Removes quality control samples from analysis
+\item Tests statistical assumptions (normality, variance homogeneity)
+\item Selects appropriate statistical tests automatically
+\item Applies multiple comparison corrections
+\item Generates optional visualization plots
+}
+
+For two-group comparisons, the function chooses between:
+\itemize{
+\item Paired/Independent t-test (parametric)
+\item Welch's t-test (unequal variances)
+\item Mann-Whitney U test (non-parametric)
+\item Wilcoxon signed-rank test (paired non-parametric)
+}
+
+For multi-group comparisons:
+\itemize{
+\item One-way ANOVA (parametric)
+\item Repeated measures ANOVA (paired)
+\item Kruskal-Wallis test (non-parametric)
+}
 }
 \examples{
 \dontrun{
-perform_ComparativeAnalysis(data = results_from_perform_PreprocessingPeakData_function)
+# Basic two-group comparison
+results <- perform_ComparativeAnalysis(
+  data = preprocessed_data,
+  adjust_p_method = "BH"
+)
+
+# Paired comparison with plots
+results <- perform_ComparativeAnalysis(
+  data = preprocessed_data,
+  paired = TRUE,
+  plot_metabolites = c("metabolite_1", "metabolite_2"),
+  verbose = TRUE
+)
+
+# Multi-group comparison with strict correction
+results <- perform_ComparativeAnalysis(
+  data = preprocessed_data,
+  adjust_p_method = "bonferroni",
+  sort_p = TRUE
+)
 }
 
+}
+\seealso{
+\code{\link{perform_PreprocessingPeakData}}, \code{\link[stats]{t.test}},
+\code{\link[stats]{aov}}, \code{\link[ggstatsplot]{ggbetweenstats}}
+}
+\author{
+Your Name
 }

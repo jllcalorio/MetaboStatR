@@ -16,6 +16,7 @@ perform_PreprocessingPeakData(
   spline_smooth_param_limit = c(-1.5, 1.5),
   log_scale = TRUE,
   min_QC = 5,
+  removeUncorrectedFeatures = TRUE,
   dataNormalize = "Normalization",
   refSample = NULL,
   groupSample = NULL,
@@ -51,6 +52,8 @@ perform_PreprocessingPeakData(
 \item{log_scale}{Boolean. If \code{TRUE} (default), performs signal correction fit on log-scaled data.}
 
 \item{min_QC}{Numeric. Minimum number of QC samples required for signal correction per batch.}
+
+\item{removeUncorrectedFeatures}{Boolean. If \code{TRUE} (default), removes features that were not corrected by QCRSC due to insufficient QC samples meeting the min_QC threshold.}
 
 \item{dataNormalize}{String. Data normalization method.}
 

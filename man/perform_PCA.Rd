@@ -22,7 +22,7 @@ perform_PCA(
 )
 }
 \arguments{
-\item{data}{List. This list must be a result from the \code{performPreprocessingPeakData} function.}
+\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function.}
 
 \item{scorePC}{List. A list of 2-element numeric vectors, where each vector specifies
 the principal components to plot. For example: list(c(1,2), c(1,3), c(2,3))
@@ -39,7 +39,7 @@ sorts the groups in alphabetical order.}
 
 \item{scoresTitle}{String or Vector. The scores plot title(s). Can be a single string
 (applied to all plots) or a vector of strings (one for each plot). If \code{NULL},
-defaults to "PCA Scores Plot (PC{i} vs PC{j})".}
+defaults to "PCA Scores Plot (PC\{i\} vs PC\{j\})".}
 
 \item{scoresLegend}{String. The title in the legend section of the scores plot.
 Defaults to \code{NULL} which means no legend title.}
@@ -85,7 +85,7 @@ will produce a separate scores plot.
 \dontrun{
 # Generate 3 different scores plots plus scree plot
 multi_plots <- perform_PCA(
-  data = data_from_performPreprocessingPeakData_function,
+  data = data_from_perform_PreprocessingPeakData_function,
   scorePC = list(c(1,2), c(1,3), c(2,3)),
   includeQC = FALSE,
   scoresEllipse = TRUE,
@@ -100,6 +100,6 @@ plot2 <- multi_plots$plots[[2]]  # PC1 vs PC3
 scree <- multi_plots$scree_plot  # Scree plot
 
 # Display all plots
-displayAllPlots(multi_plots, include_scree = TRUE)
+display_AllPlots(multi_plots, include_scree = TRUE)
 }
 }
