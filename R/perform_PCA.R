@@ -5,7 +5,7 @@
 #' principal component combinations, plus an optional scree plot. Each combination in the list
 #' will produce a separate scores plot.
 #'
-#' @param data List. This list must be a result from the `performPreprocessingPeakData` function.
+#' @param data List. This list must be a result from the `perform_PreprocessingPeakData` function.
 #' @param scorePC List. A list of 2-element numeric vectors, where each vector specifies
 #'   the principal components to plot. For example: list(c(1,2), c(1,3), c(2,3))
 #'   will generate 3 plots: PC1 vs PC2, PC1 vs PC3, and PC2 vs PC3.
@@ -17,7 +17,7 @@
 #' @param scoresEllipse Boolean. If `TRUE` (default), adds an ellipse in the scores plot.
 #' @param scoresTitle String or Vector. The scores plot title(s). Can be a single string
 #'   (applied to all plots) or a vector of strings (one for each plot). If `NULL`,
-#'   defaults to "PCA Scores Plot (PC{i} vs PC{j})".
+#'   defaults to "PCA Scores Plot (PC\{i\} vs PC\{j\})".
 #' @param scoresLegend String. The title in the legend section of the scores plot.
 #'   Defaults to `NULL` which means no legend title.
 #' @param includeScree Boolean. If `TRUE`, generates a scree plot in addition to scores plots.
@@ -46,11 +46,13 @@
 #'   }
 #' @export
 #'
+#' @importFrom stats complete.cases
+#'
 #' @examples
 #' \dontrun{
 #' # Generate 3 different scores plots plus scree plot
 #' multi_plots <- perform_PCA(
-#'   data = data_from_performPreprocessingPeakData_function,
+#'   data = data_from_perform_PreprocessingPeakData_function,
 #'   scorePC = list(c(1,2), c(1,3), c(2,3)),
 #'   includeQC = FALSE,
 #'   scoresEllipse = TRUE,
@@ -65,7 +67,7 @@
 #' scree <- multi_plots$scree_plot  # Scree plot
 #'
 #' # Display all plots
-#' displayAllPlots(multi_plots, include_scree = TRUE)
+#' display_AllPlots(multi_plots, include_scree = TRUE)
 #' }
 perform_PCA <- function(
     data,
@@ -89,8 +91,8 @@ perform_PCA <- function(
   # ============================================================================
 
   # Check if data is from the correct function
-  if (!exists("FunctionOrigin", where = data) || data$FunctionOrigin != "performPreprocessingPeakData") {
-    stop("The parameter 'data' must be from the 'performPreprocessingPeakData' function.")
+  if (data$FunctionOrigin != "perform_PreprocessingPeakData") {
+    stop("The parameter 'data' must be from the 'perform_PreprocessingPeakData' function.")
   }
 
   # Check scorePC parameter
@@ -386,7 +388,7 @@ perform_PCA <- function(
       ggplot2::theme(
         plot.title = ggplot2::element_text(hjust = 0.5, size = 14),
         axis.title = ggplot2::element_text(size = 12),
-        axis.text.x = ggplot2::element_text(angle = 0, hjust = 0.5, size = 10),  # No angle for PC labels
+        axis.text.x = ggplot2::element_text(angle = 90, hjust = 0.5, size = 10),
         axis.text.y = y_axis_text,
         axis.ticks.y = y_axis_ticks,
         panel.grid.major = ggplot2::element_blank(),
@@ -555,8 +557,8 @@ perform_PCA <- function(
     pca_results = pca_res,
     data_used = data_pca,
     sample_type = sample_type,
-    variance_explained = variance_explained,
-    eigenvalues = eigenvalues,
+    variance_explained = as.data.frame(variance_explained),
+    eigenvalues = as.data.frame(eigenvalues),
     function_call = match.call(),
     scree_included = includeScree
   )
@@ -586,7 +588,7 @@ print.multipleScoresPlots <- function(x, ...) {
     cat("Use $scree_plot to access the scree plot\n")
   }
   cat("Use $plot_info for detailed information about each plot\n")
-  cat("Use displayAllPlots() to show all plots at once\n")
+  cat("Use display_AllPlots() to show all plots at once\n")
 }
 
 # Enhanced helper function to display all plots at once
@@ -599,7 +601,7 @@ print.multipleScoresPlots <- function(x, ...) {
 #' @param ncol Number of columns in the plot arrangement (default: 2)
 #' @param nrow Number of rows in the plot arrangement (default: NULL, auto-calculated)
 #' @export
-displayAllPlots <- function(multi_plots_obj, arrange = TRUE, include_scree = TRUE, ncol = 2, nrow = NULL) {
+display_AllPlots <- function(multi_plots_obj, arrange = TRUE, include_scree = TRUE, ncol = 2, nrow = NULL) {
   if (!inherits(multi_plots_obj, "multipleScoresPlots")) {
     stop("Object must be created by perform_PCA() function")
   }

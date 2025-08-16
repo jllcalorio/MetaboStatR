@@ -1,367 +1,933 @@
-#' Perform Area Under the Receiver Operating Characteristic (AUROC)
+#' Perform Area Under the Receiver Operating Characteristic Curve Analysis
 #'
 #' @description
-#' This function performs the AUROC analysis using the data from data processing, dimension-reduction,
-#' fold change analysis, and comparative analysis. Data will be automatically selected from those lists.
+#' Performs comprehensive Area Under the Receiver Operating Characteristic (AUROC)
+#' analysis for metabolomics data. This function integrates results from data
+#' preprocessing, dimension reduction (OPLS-DA), fold change analysis, and
+#' comparative analysis to identify and visualize discriminative metabolic features
+#' between different groups. The function automatically filters features based on
+#' Variable Importance in Projection (VIP) scores, fold change thresholds, and
+#' statistical significance, then generates ROC curves for the most discriminative features.
 #'
-#' @param data_PP List. This list must be a result from the `perform_PreprocessingPeakData` function.
-#' @param data_DR List. This list must be a result from the `perform_DimensionReduction` function, specifically from OPLS-DA.
-#' @param data_FC List. This list must be a result from the `perform_FoldChange` function.
-#' @param data_CA List. This list must be a result from the `perform_ComparativeAnalysis` function.
-#' @param arrangeLevels Vector. Determines how the groups will be arranged. The format could be "c('group1', 'group2', ...)". Defaults to `NULL` which sorts the groups in alphabetical order. Suggests to be inputted (control, case1, case2) where case2 is worse than case1 e.g., Severe dengue than Non-severe dengue.
-#' @param VIPmin Numeric. Minimum VIP score to consider.
-#' @param fcUP Numeric. Minimum fold change to consider feature as up-regulated.
-#' @param fcDown Numeric. Maximum fold change to consider feature as down-regulated.
-#' @param adjpvalue Numeric. Defaults to 0.05. Defines the adjusted p-value threshold.
-#' @param direction Defines the direction in AUROC. See more details in `?pROC::roc`. The `>` and `<` are used when resampling or randomizing the data.
+#' @param data_PP List. Results from the \code{performPreprocessingPeakData} function.
+#'   Must contain \code{$Metadata} with \code{$Group} column and
+#'   \code{$data_scaledPCA_rsdFiltered_varFiltered} matrix.
+#' @param data_DR List. Results from the \code{performDimensionReduction} function
+#'   (OPLS-DA). Must contain VIP score data frames with naming pattern
+#'   \code{data_VIPScores_[group1] vs. [group2]}.
+#' @param data_FC List. Results from the \code{performFoldChange} function. Must
+#'   contain fold change data frames with naming pattern
+#'   \code{data_combined_[group1] vs. [group2]}.
+#' @param data_CA List. Results from the \code{performComparativeAnalysis} function.
+#'   Must contain \code{$results} data frame with adjusted p-values.
+#' @param arrangeLevels Character vector or NULL. Specifies the order of groups
+#'   for analysis (e.g., \code{c("Control", "Case1", "Case2")}). When NULL,
+#'   groups are sorted alphabetically. It is recommended to arrange from least
+#'   severe to most severe condition (e.g., "Control", "Mild", "Severe").
+#' @param VIPmin Numeric. Minimum Variable Importance in Projection (VIP) score
+#'   threshold for feature selection. Features with VIP < VIPmin are excluded.
+#'   Default: 1.0.
+#' @param fcUP Numeric. Minimum fold change threshold for up-regulated features.
+#'   Features with fold change >= fcUP are considered up-regulated. Default: 2.0.
+#' @param fcDown Numeric. Maximum fold change threshold for down-regulated features.
+#'   Features with fold change <= fcDown are considered down-regulated. Default: 0.5.
+#' @param adjpvalue Numeric. Adjusted p-value threshold for statistical significance.
+#'   Features with adjusted p-value >= adjpvalue are excluded. Default: 0.05.
+#' @param direction Character. Direction parameter for ROC analysis. Options:
 #'   \itemize{
-#'     \item "auto": Dynamically change the direction of which group is higher.
-#'     \item ">": if the predictor values for the control group are higher than the values of the case group will be applied
-#'     \item "<": otherwise of ">".
-#'     }
-#'     Defaults to ">".
-#' @param top_n Numeric. Defines the features with the highest AUC. Defaults to plotting the top 5.
-#' @param plot_iden_met Boolean. If `TRUE`, plots the identified metabolites, one-by-one. Defaults to `NULL`.
+#'     \item \code{"auto"}: Automatically determines optimal direction
+#'     \item \code{">"}: Use when predictor values for control group > case group
+#'     \item \code{"<"}: Use when predictor values for control group < case group
+#'   }
+#'   See \code{\link[pROC]{roc}} for details. Default: "auto".
+#' @param top_n Integer. Number of top features (by AUC) to display in ROC plots.
+#'   Must be positive. Default: 5.
+#' @param plot_iden_met Character vector or NULL. Specific metabolite names to plot
+#'   individually. When provided, generates separate ROC plots for each specified
+#'   metabolite regardless of filtering criteria. Default: NULL.
+#' @param confidence_level Numeric. Confidence level for AUC confidence intervals.
+#'   Must be between 0 and 1. Default: 0.95.
+#' @param min_group_size Integer. Minimum number of samples required per group
+#'   for ROC analysis. Default: 3.
 #'
-#' @returns Returns a list of results and plots if requested.
-#' @export
+#' @return A list containing the following components:
+#'   \itemize{
+#'     \item \code{FunctionOrigin}: Character indicating the source function
+#'     \item \code{data_Merged_[comparison]}: Merged data frames for each group comparison
+#'     \item \code{data_Filtered_[comparison]}: Filtered data matrices for each comparison
+#'     \item \code{data_results_[comparison]}: AUROC results data frames
+#'     \item \code{plots}: List of combined ROC plots for top features
+#'     \item \code{plots_identifiedMetabolites}: Individual plots for specified metabolites (if requested)
+#'     \item \code{summary}: Overall summary statistics
+#'   }
+#'
+#' @details
+#' The function performs the following steps:
+#' \enumerate{
+#'   \item Validates input data and parameters
+#'   \item Excludes quality control (QC) samples
+#'   \item Generates all possible pairwise group combinations
+#'   \item For each comparison, merges VIP, fold change, and statistical data
+#'   \item Filters features based on specified thresholds
+#'   \item Computes ROC curves and AUC values with confidence intervals
+#'   \item Generates publication-ready plots
+#'   \item Optionally creates individual plots for specified metabolites
+#' }
 #'
 #' @examples
 #' \dontrun{
-#'   data_PP = results_from_perform_PreprocessingPeakData_function,
-#'   data_DR = results_from_perform_DimensionReduction_function,
-#'   data_FC = results_from_perform_FoldChange_function,
-#'   data_CA = results_from_perform_ComparativeAnalysis_function
+#' # Basic usage
+#' auroc_results <- perform_AUROC(
+#'   data_PP = preprocessing_results,
+#'   data_DR = dimension_reduction_results,
+#'   data_FC = fold_change_results,
+#'   data_CA = comparative_analysis_results
+#' )
+#'
+#' # Advanced usage with custom parameters
+#' auroc_results <- perform_AUROC(
+#'   data_PP = preprocessing_results,
+#'   data_DR = dimension_reduction_results,
+#'   data_FC = fold_change_results,
+#'   data_CA = comparative_analysis_results,
+#'   arrangeLevels = c("Control", "Mild", "Severe"),
+#'   VIPmin = 1.5,
+#'   fcUP = 1.5,
+#'   fcDown = 0.67,
+#'   adjpvalue = 0.01,
+#'   top_n = 10,
+#'   plot_iden_met = c("Metabolite1", "Metabolite2")
+#' )
 #' }
+#'
+#' @seealso
+#' \code{\link[pROC]{roc}}, \code{\link[pROC]{auc}}, \code{\link[pROC]{ci}}
+#'
+#' @importFrom dplyr arrange filter select any_of full_join desc
+#' @importFrom ggplot2 ggplot geom_line aes labs theme_minimal theme scale_color_manual
+#' @importFrom pROC roc auc ci
+#' @importFrom RColorBrewer brewer.pal
+#' @importFrom grDevices rainbow
+#' @importFrom utils combn head
+#' @importFrom stats median
+#'
+#' @export
 perform_AUROC <- function(
     data_PP,
     data_DR,
     data_FC,
     data_CA,
-    arrangeLevels  = NULL,
-    VIPmin         = 1,
-    fcUP           = 2,
-    fcDown         = 0.5,
-    adjpvalue      = 0.05,
-    direction      = c("auto", ">", "<")[1],
-    top_n          = 5,
-    plot_iden_met  = NULL
+    arrangeLevels = NULL,
+    VIPmin = 1.0,
+    fcUP = 2.0,
+    fcDown = 0.5,
+    adjpvalue = 0.05,
+    direction = "auto",
+    top_n = 5L,
+    plot_iden_met = NULL,
+    confidence_level = 0.95,
+    min_group_size = 3L
 ) {
 
-  auroc_results                <- base::list() # List to store all relevant results
-  auroc_results$FunctionOrigin <- "perform_AUROC"
+  # Validate inputs
+  .validate_auroc_inputs(data_PP, data_DR, data_FC, data_CA, arrangeLevels,
+                         VIPmin, fcUP, fcDown, adjpvalue, direction, top_n,
+                         confidence_level, min_group_size)
 
-  if (!(direction %in% c("auto", ">", "<"))) {
-    stop("The parameter 'direction' must be either >, <, or auto. Choose '>' or '<' only when 'resampling or randomizing the data'. See more in ?pROC::roc.")
-  }
+  # Initialize results list
+  auroc_results <- list(
+    FunctionOrigin = "perform_AUROC",
+    timestamp = Sys.time(),
+    parameters = list(
+      arrangeLevels = arrangeLevels,
+      VIPmin = VIPmin,
+      fcUP = fcUP,
+      fcDown = fcDown,
+      adjpvalue = adjpvalue,
+      direction = direction,
+      top_n = top_n,
+      confidence_level = confidence_level,
+      min_group_size = min_group_size
+    ),
+    plots = list(),
+    plots_identifiedMetabolites = list(),
+    summary = list()
+  )
 
-  qc_indices     <- data_PP$Metadata$Group %in% c("SQC", "EQC", "QC")
-  non_qc_indices <- !qc_indices
+  # Process group data
+  group_info <- .process_group_data_auroc(data_PP, arrangeLevels, min_group_size)
+  groups <- group_info$groups
+  unique_groups <- group_info$unique_groups
+  non_qc_indices <- group_info$non_qc_indices
 
-  # Define groups
-  groups         <- data_PP$Metadata$Group[non_qc_indices]
-
-  # Check if arrangeLevels have the same actual values of groups
-  if (!base::is.null(arrangeLevels)) {
-    if (base::length(base::setdiff(arrangeLevels, base::unique(groups))) > 0) {
-      stop("Invalid arrangeLevels: check for typos or missing groups.")
-    } else {
-      groups        <- base::factor(groups, levels = arrangeLevels)
-      unique_groups <- arrangeLevels
-    }
-  } else {
-    unique_groups <- base::unique(groups)
-  }
-
-  # unique_groups <- ifelse(is.null(arrangeLevels), unique(groups), levels(groups))
-
+  # Generate group combinations
   group_combinations <- utils::combn(unique_groups, 2, simplify = FALSE)
 
+  if (length(group_combinations) == 0) {
+    warning("No valid group combinations found for analysis.")
+    return(auroc_results)
+  }
+
+  # Initialize summary statistics
+  processed_comparisons <- 0
+  failed_comparisons <- character(0)
+  total_features_analyzed <- 0
+
+  # Process each group combination
   for (group_pair in group_combinations) {
 
-    group2     <- group_pair[1] # The group here is originally group1, but since ROC requires (control, case), thus
-    group1     <- group_pair[2] # The group here is originally group2, but since ROC requires (control, case), thus
-    group_name <- base::paste(group1, "vs.", group2, sep = " ")
+    tryCatch({
+      # Set up group comparison (reverse for ROC: control vs case)
+      group1 <- group_pair[2]  # case (the 2nd item in the pair)
+      group2 <- group_pair[1]  # control (the 1st item in the pair)
+      group_name <- paste(group1, "vs.", group2, sep = " ")
+      # group_name <- paste(group2, "vs.", group1, sep = " ") # Interchanged group1 and group2 positions
 
-    if (is.null(data_DR[[base::paste0("data_VIPScores_", group_name)]])) {
-      message(base::paste0("Skipping '", group_name, "' due to missing VIP data. This is due to no model being created in OPLS-DA."))
-      next
+      message("\nProcessing comparison: ", group_name)
+
+      # Check for required data
+      vip_key <- paste0("data_VIPScores_", group_name)
+      if (is.null(data_DR[[vip_key]])) {
+        message("Skipping '", group_name, "' - missing VIP data (no OPLS-DA model)")
+        failed_comparisons <- c(failed_comparisons, group_name)
+        next
+      }
+
+      # Extract and merge datasets
+      merged_data <- .extract_and_merge_data(data_DR, data_FC, data_CA, group_name)
+
+      # Save the merged data in a list
+      auroc_results[[paste0("merged_data_", group_name)]] <- merged_data
+
+      if (is.null(merged_data)) {
+        message("Skipping '", group_name, "' - failed to merge data")
+        failed_comparisons <- c(failed_comparisons, group_name)
+        next
+      }
+
+      # Filter features based on criteria
+      filtered_data <- .filter_features(merged_data, VIPmin, fcUP, fcDown, adjpvalue)
+
+      # Save the filtered data in a list
+      auroc_results[[paste0("filtered_data_", group_name)]] <- filtered_data
+
+      if (nrow(filtered_data) == 0) {
+        message("No features passed filtering for ", group_name)
+        failed_comparisons <- c(failed_comparisons, group_name)
+        next
+      }
+
+      # Store merged and filtered data
+      auroc_results[[paste0("data_Merged_", group_name)]] <- merged_data
+
+      # Prepare data matrix
+      feature_data <- .prepare_feature_data(data_PP, filtered_data$Feature,
+                                            groups, non_qc_indices)
+      auroc_results[[paste0("data_Filtered_", group_name)]] <- feature_data
+
+      # Perform AUROC analysis
+      auroc_df <- .perform_auroc_analysis(feature_data, group1, group2,
+                                          direction, confidence_level)
+
+      if (nrow(auroc_df) == 0) {
+        message("No valid AUROC results for ", group_name)
+        failed_comparisons <- c(failed_comparisons, group_name)
+        next
+      }
+
+      auroc_results[[paste0("data_results_", group_name)]] <- auroc_df
+
+      # Create main ROC plot
+      main_plot <- .create_roc_plot(feature_data, auroc_df, group1, group2,
+                                    group_name, direction, top_n)
+      auroc_results$plots[[group_name]] <- main_plot
+
+      # Display plot
+      print(main_plot)
+
+      # Create individual metabolite plots if requested
+      if (!is.null(plot_iden_met)) {
+        individual_plots <- .create_individual_plots(data_PP, data_DR, data_FC,
+                                                     data_CA, plot_iden_met,
+                                                     group1, group2, group_name,
+                                                     groups, non_qc_indices,
+                                                     direction, confidence_level)
+        if (length(individual_plots) > 0) {
+          auroc_results$plots_identifiedMetabolites[[group_name]] <- individual_plots
+        }
+      }
+
+      processed_comparisons <- processed_comparisons + 1
+      total_features_analyzed <- total_features_analyzed + nrow(auroc_df)
+
+    }, error = function(e) {
+      warning("Error processing ", group_name, ": ", e$message)
+      failed_comparisons <<- c(failed_comparisons, group_name)
+    })
+  }
+
+  # Add summary information
+  auroc_results$summary <- list(
+    total_comparisons = length(group_combinations),
+    processed_comparisons = processed_comparisons,
+    failed_comparisons = failed_comparisons,
+    total_features_analyzed = total_features_analyzed,
+    unique_groups = unique_groups,
+    samples_per_group = table(groups)
+  )
+
+  message("\nAUROC analysis completed: ", processed_comparisons, "/",
+          length(group_combinations), " comparisons processed successfully")
+
+  return(auroc_results)
+}
+
+# Helper Functions --------------------------------------------------------
+
+#' Validate AUROC function inputs
+#' @keywords internal
+.validate_auroc_inputs <- function(data_PP, data_DR, data_FC, data_CA, arrangeLevels,
+                                   VIPmin, fcUP, fcDown, adjpvalue, direction, top_n,
+                                   confidence_level, min_group_size) {
+
+  # Check required list inputs
+  required_lists <- list(data_PP = data_PP, data_DR = data_DR,
+                         data_FC = data_FC, data_CA = data_CA)
+
+  for (name in names(required_lists)) {
+    if (!is.list(required_lists[[name]])) {
+      stop(paste(name, "must be a list"))
+    }
+  }
+
+  # Check data_PP structure
+  if (is.null(data_PP$Metadata) || is.null(data_PP$Metadata$Group)) {
+    stop("data_PP must contain $Metadata$Group")
+  }
+
+  if (is.null(data_PP$data_scaledPCA_rsdFiltered_varFiltered)) {
+    stop("data_PP must contain $data_scaledPCA_rsdFiltered_varFiltered")
+  }
+
+  # Check data_CA structure
+  if (is.null(data_CA$results)) {
+    stop("data_CA must contain $results")
+  }
+
+  # Validate numeric parameters
+  numeric_params <- list(
+    VIPmin = VIPmin, fcUP = fcUP, fcDown = fcDown, adjpvalue = adjpvalue,
+    confidence_level = confidence_level, min_group_size = min_group_size
+  )
+
+  for (name in names(numeric_params)) {
+    if (!is.numeric(numeric_params[[name]]) || length(numeric_params[[name]]) != 1) {
+      stop(paste(name, "must be a single numeric value"))
+    }
+  }
+
+  # Validate specific numeric ranges
+  if (VIPmin < 0) stop("VIPmin must be non-negative")
+  if (fcUP <= 1) stop("fcUP must be greater than 1")
+  if (fcDown >= 1) stop("fcDown must be less than 1")
+  if (fcDown <= 0) stop("fcDown must be positive")
+  if (adjpvalue <= 0 || adjpvalue >= 1) stop("adjpvalue must be between 0 and 1")
+  if (confidence_level <= 0 || confidence_level >= 1) {
+    stop("confidence_level must be between 0 and 1")
+  }
+  if (min_group_size < 2) stop("min_group_size must be at least 2")
+
+  # Validate direction parameter
+  if (!direction %in% c("auto", ">", "<")) {
+    stop("direction must be 'auto', '>', or '<'")
+  }
+
+  # Validate top_n
+  if (!is.numeric(top_n) || length(top_n) != 1 || top_n < 1 || top_n != round(top_n)) {
+    stop("top_n must be a positive integer")
+  }
+
+  # Validate arrangeLevels if provided
+  if (!is.null(arrangeLevels) && !is.character(arrangeLevels)) {
+    stop("arrangeLevels must be a character vector or NULL")
+  }
+}
+
+#' Process group data and handle QC samples
+#' @keywords internal
+.process_group_data_auroc <- function(data_PP, arrangeLevels, min_group_size) {
+
+  # Identify QC and non-QC samples
+  qc_indices <- data_PP$Metadata$Group %in% c("SQC", "EQC", "QC")
+  non_qc_indices <- !qc_indices
+
+  if (sum(non_qc_indices) == 0) {
+    stop("No non-QC samples found in data")
+  }
+
+  # Extract non-QC groups
+  groups <- data_PP$Metadata$Group[non_qc_indices]
+
+  # Handle group arrangement
+  if (!is.null(arrangeLevels)) {
+    missing_groups <- setdiff(arrangeLevels, unique(groups))
+    extra_groups <- setdiff(unique(groups), arrangeLevels)
+
+    if (length(missing_groups) > 0) {
+      stop("arrangeLevels contains groups not found in data: ",
+           paste(missing_groups, collapse = ", "))
     }
 
-    # Extract matching datasets from DR, FC, and CA
-    vip_data   <- data_DR[[base::paste0("data_VIPScores_", group_name)]] %>%
-      dplyr::arrange(Feature)
-    fc_data    <- data_FC[[base::paste0("data_combined_",  group_name)]] %>%
-      base::cbind(Feature = base::rownames(.), .) %>%
-      base::`rownames<-`(NULL) %>%
-      dplyr::arrange(Feature)
-    ca_results <- data_CA$results %>%
-      base::cbind(Feature = base::rownames(.), .) %>%
-      base::`rownames<-`(NULL) %>%
-      dplyr::arrange(Feature)
-
-    if (base::is.null(vip_data) || base::is.null(fc_data) || base::is.null(ca_results)) {
-      message("Skipping ", group_name, " due to missing data.")
-      next
+    if (length(extra_groups) > 0) {
+      warning("Data contains groups not in arrangeLevels: ",
+              paste(extra_groups, collapse = ", "))
     }
 
-    # Merge the datasets
-    merged_data <- dplyr::full_join(vip_data, fc_data, by = "Feature") %>%
-      dplyr::full_join(ca_results, by = "Feature") %>%
-      dplyr::filter(VIP > VIPmin,
-                    fold_change >= fcUP | fold_change <= fcDown,
-                    `adj. p-value` < adjpvalue)
+    groups <- factor(groups, levels = arrangeLevels)
+    unique_groups <- arrangeLevels
+  } else {
+    unique_groups <- sort(unique(groups))
+  }
 
-    if (base::nrow(merged_data) == 0) {
-      message(base::paste0("No features passed filtering for the ", group_name, " comparison."))
-      next
+  # Check minimum group sizes
+  group_counts <- table(groups)
+  small_groups <- names(group_counts)[group_counts < min_group_size]
+
+  if (length(small_groups) > 0) {
+    warning("Groups with fewer than ", min_group_size, " samples: ",
+            paste(small_groups, collapse = ", "))
+  }
+
+  # Filter to groups with sufficient size
+  valid_groups <- names(group_counts)[group_counts >= min_group_size]
+  unique_groups <- intersect(unique_groups, valid_groups)
+
+  if (length(unique_groups) < 2) {
+    stop("Need at least 2 groups with minimum ", min_group_size, " samples each")
+  }
+
+  return(list(
+    groups = groups,
+    unique_groups = unique_groups,
+    non_qc_indices = non_qc_indices,
+    group_counts = group_counts
+  ))
+}
+
+#' Extract and merge VIP, fold change, and comparative analysis data
+#' @keywords internal
+.extract_and_merge_data <- function(data_DR, data_FC, data_CA, group_name) {
+
+  tryCatch({
+    # Extract datasets with error checking
+    vip_data <- data_DR[[paste0("data_VIPScores_", group_name)]]
+    fc_data <- data_FC[[paste0("data_combined_", group_name)]]
+    ca_results <- data_CA$results
+
+    # Remove the "Feature" column in Fold Change results
+    fc_data$Feature <- NULL
+
+    # Validate extracted data
+    if (is.null(vip_data) || nrow(vip_data) == 0) {
+      stop("VIP data is empty or missing")
     }
 
-    # auroc_results$data_merged[[group_name]] <- merged_data
-    auroc_results[[base::paste0("data_Merged_", group_name)]] <- merged_data
+    if (is.null(fc_data) || nrow(fc_data) == 0) {
+      stop("Fold change data is empty or missing")
+    }
 
-    filtered_features <- merged_data$Feature
+    if (is.null(ca_results) || nrow(ca_results) == 0) {
+      stop("Comparative analysis results are empty or missing")
+    }
 
-    new_data <- data_PP$data_scaledPCA_rsdFiltered_varFiltered[non_qc_indices, ] %>%
-      dplyr::select(dplyr::any_of(filtered_features)) %>% # Filter features that passed the set thresholds
-      base::cbind(Groups = groups, .)
+    # Prepare data frames with Feature column
+    vip_data <- vip_data %>%
+      dplyr::arrange(Feature)
 
-    # auroc_results$data_filtered[[group_name]] <- new_data
-    auroc_results[[base::paste0("data_Filtered_", group_name)]] <- new_data
+    fc_data <- fc_data %>%
+      cbind(Feature = rownames(.), .) %>%
+      `rownames<-`(NULL) %>%
+      dplyr::arrange(Feature)
 
-    # Initialize per-group result container
-    auroc_results_df <- base::data.frame(
-      Feature          = base::character(),
-      Group_Comparison = base::character(),
-      AUROC            = base::numeric(),
-      CI_Lower         = base::numeric(),
-      CI_Upper         = base::numeric(),
-      stringsAsFactors = FALSE
+    ca_results <- ca_results %>%
+      cbind(Feature = rownames(.), .) %>%
+      `rownames<-`(NULL) %>%
+      dplyr::arrange(Feature)
+
+    # Merge datasets
+    merged_data <- vip_data %>%
+      dplyr::full_join(fc_data, by = "Feature") %>%
+      dplyr::full_join(ca_results, by = "Feature")
+
+    # Remove rows with missing critical data
+    merged_data <- merged_data %>%
+      filter(!is.na(VIP), !is.na(fold_change), !is.na(adj_p_value))
+
+    return(merged_data)
+
+  }, error = function(e) {
+    message("Error merging data for ", group_name, ": ", e$message)
+    return(NULL)
+  })
+}
+
+#' Filter features based on specified criteria
+#' @keywords internal
+.filter_features <- function(merged_data, VIPmin, fcUP, fcDown, adjpvalue) {
+
+  filtered_data <- merged_data %>%
+    dplyr::filter(
+      VIP > VIPmin,
+      (fold_change >= fcUP | fold_change <= fcDown),
+      adj_p_value < adjpvalue
     )
 
-    for (feature_name in filtered_features) {
-      if (!(feature_name %in% base::colnames(new_data))) next
+  return(filtered_data)
+}
 
-      # # Manually specify direction
-      # if (direction == "auto2") {
-      #   direction = base::ifelse(
-      #     stats::median(new_data[[feature_name]][new_data$Groups == group1]) < stats::median(new_data[[feature_name]][new_data$Groups == group2]),
-      #     ">", # if median of control < median of case
-      #     "<"  # if otherwise
-      #   )
-      # }
+#' Prepare feature data matrix for AUROC analysis
+#' @keywords internal
+.prepare_feature_data <- function(data_PP, feature_names, groups, non_qc_indices) {
+
+  # Get the data matrix
+  data_matrix <- data_PP$data_scaledPCA_rsdFiltered_varFiltered[non_qc_indices, , drop = FALSE]
+
+  # Check which features are available
+  available_features <- intersect(feature_names, colnames(data_matrix))
+
+  if (length(available_features) == 0) {
+    stop("No requested features found in data matrix")
+  }
+
+  if (length(available_features) < length(feature_names)) {
+    missing_features <- setdiff(feature_names, available_features)
+    warning("Some features not found in data matrix: ",
+            paste(missing_features, collapse = ", "))
+  }
+
+  # Create feature data with groups
+  feature_data <- data_matrix %>%
+    dplyr::select(dplyr::any_of(available_features)) %>%
+    cbind(Groups = groups, .)
+
+  return(feature_data)
+}
+
+#' Perform AUROC analysis for filtered features
+#' @keywords internal
+.perform_auroc_analysis <- function(feature_data, group1, group2, direction, confidence_level) {
+
+  # Get feature names (exclude Groups column)
+  feature_names <- setdiff(colnames(feature_data), "Groups")
+
+  # Initialize results data frame
+  auroc_df <- data.frame(
+    Feature = character(),
+    Group_Comparison = character(),
+    AUROC = numeric(),
+    CI_Lower = numeric(),
+    CI_Upper = numeric(),
+    stringsAsFactors = FALSE
+  )
+
+  group_name <- paste(group1, "vs.", group2, sep = " ")
+
+  for (feature_name in feature_names) {
+
+    tryCatch({
+      # Determine direction for ROC
+      roc_direction <- direction
+      if (direction == "auto") {
+        median_group1 <- median(feature_data[[feature_name]][feature_data$Groups == group1], na.rm = TRUE)
+        median_group2 <- median(feature_data[[feature_name]][feature_data$Groups == group2], na.rm = TRUE)
+        roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
+      }
 
       # Compute ROC curve
       roc_obj <- pROC::roc(
-        response  = new_data$Groups,
-        predictor = new_data[[feature_name]],
-        levels    = base::c(group1, group2),
-        direction = direction
+        response = feature_data$Groups,
+        predictor = feature_data[[feature_name]],
+        levels = c(group1, group2),
+        direction = roc_direction,
+        quiet = TRUE
       )
 
-      auroc_results_df <- base::rbind(auroc_results_df, base::data.frame(
-        Feature          = feature_name,
+      # Get AUC and confidence interval
+      auc_val <- as.numeric(pROC::auc(roc_obj))
+      ci_vals <- as.numeric(pROC::ci(roc_obj, conf.level = confidence_level))
+
+      # Add to results
+      auroc_df <- rbind(auroc_df, data.frame(
+        Feature = feature_name,
         Group_Comparison = group_name,
-        AUROC            = as.numeric(pROC::auc(roc_obj)),
-        CI_Lower         = as.numeric(pROC::ci(roc_obj)[1]),
-        CI_Upper         = as.numeric(pROC::ci(roc_obj)[3])
-      )) %>% base::as.data.frame() %>% dplyr::arrange(dplyr::desc(AUROC)) # Sort: Highest AUC first
-    }
-
-
-    ########################
-    # PLOT
-    ########################
-
-    # Store top N features
-    top_features <- utils::head(auroc_results_df, base::min(top_n, base::nrow(auroc_results_df)))
-
-    # Generate ROC objects for each feature
-    roc_list <- base::lapply(base::seq_len(base::nrow(top_features)), function(i) {
-      feature <- top_features$Feature[i]
-      pROC::roc(
-        response  = new_data$Groups,
-        predictor = new_data[[feature]],
-        levels    = base::c(group1, group2),
-        direction = direction
-      )
-    })
-
-    # Create a single ggplot object with all ROC curves
-    gg_roc   <- ggplot2::ggplot()
-    auc_data <- base::data.frame()
-
-    for (i in base::seq_along(roc_list)) {
-      feature <- top_features$Feature[i]
-      roc_obj <- roc_list[[i]]
-      auc_val <- top_features$AUROC[i]
-      ci_low  <- top_features$CI_Lower[i]
-      ci_up   <- top_features$CI_Upper[i]
-
-      # Get ROC curve data as data frame
-      roc_df <- base::data.frame(
-        x       = 1 - roc_obj$specificities,   # Correct the X-axis, i.e., plot must go up from left to right, not from bottom-up
-        y       = roc_obj$sensitivities,
-        Feature = base::paste0(
-          feature,
-          " (AUC = ", base::sprintf("%.3f", auc_val), ")",
-          " (95% CI = ", base::sprintf("%.3f", ci_low), "-", base::sprintf("%.3f", ci_up), ")"
-        )
-      ) %>% dplyr::arrange(y)
-
-      gg_roc <- gg_roc +
-        ggplot2::geom_line(
-          data = roc_df,
-          ggplot2::aes(x = x, y = y, color = Feature),
-          size = 1.2
-        )
-
-      # This is for sorting the legend in AUC plot
-      # Create a data frame with feature names and AUC values
-      auc_data <- base::rbind(auc_data, data.frame(
-        Feature = base::paste0(
-          feature,
-          " (AUC = ", base::sprintf("%.3f", auc_val), ")",
-          " (95% CI = ", base::sprintf("%.3f", ci_low), "-", base::sprintf("%.3f", ci_up), ")"
-        ),
-        AUC = auc_val
+        AUROC = auc_val,
+        CI_Lower = ci_vals[1],
+        CI_Upper = ci_vals[3],
+        stringsAsFactors = FALSE
       ))
-    }
 
-    auc_data       <- auc_data %>% dplyr::arrange(dplyr::desc(AUC)) # Sort by AUC in ascending order
-    feature_levels <- auc_data$Feature # Use the sorted Feature names
-
-    # Define colors for plotting
-    # colors <- c("blue", "red", "green", "purple", "orange")
-    # Dynamically generate distinct colors based on top_n
-    # top_n <- nrow(top_features)
-    if (top_n <= 8) {
-      colors <- RColorBrewer::brewer.pal(top_n, "Dark2")
-    } else {
-      colors <- grDevices::rainbow(top_n)
-    }
-
-    # Finalize plot
-    combined_plot <- gg_roc +
-      # scale_color_manual(values = colors[seq_len(nrow(top_features))]) +
-      ggplot2::scale_color_manual(
-        values = colors,
-        breaks = feature_levels  # Ensures the legend follows the sorted order
-      ) +
-      ggplot2::labs(
-        title = base::paste0("Top ", top_n, " features' ROC Curves - ", group_name),
-        x     = "1 - Specificity",
-        y     = "Sensitivity",
-        color = "Feature (AUC)"
-      ) +
-      ggplot2::theme_minimal() +
-      # ggplot2::theme(legend.position = "bottom")
-      ggplot2::theme(legend.position = base::c(0.8, 0.2))  # Adjust the coordinates
-
-    ########################
-    ########################
-
-    # Store results specific to the group pair
-    auroc_results$results_auroc[[group_name]] <- roc_obj
-    # auroc_results$results[[group_name]]       <- auroc_results_df
-    auroc_results[[base::paste0("data_results_", group_name)]]       <- auroc_results_df
-    # Save to results
-    auroc_results$plots[[group_name]]         <- combined_plot
-
-    print(combined_plot)
-
-    # Plot identified metabolites one-by-one
-    if (!base::is.null(plot_iden_met)) {
-
-      # Merged data regardless if it has VIP, fcUP, fcDown, or adjusted p-value according to set thresholds
-      merged_data2 <- dplyr::full_join(vip_data, fc_data, by = "Feature") %>%
-        dplyr::full_join(ca_results, by = "Feature")
-
-      merged_data2_metabolites <- merged_data2$Feature # Get metabolite names
-
-      metabolites_to_plot      <- base::intersect(plot_iden_met, merged_data2_metabolites)
-
-      new_data2 <- data_PP$data_scaledPCA_rsdFiltered_varFiltered[non_qc_indices, ] %>%
-        dplyr::select(dplyr::any_of(metabolites_to_plot)) %>% # Filter metabolites that passed the set thresholds
-        base::cbind(Groups = groups, .)
-
-      if (base::length(metabolites_to_plot) > 0) {
-        auroc_results$plots_identifiedMetabolites[[group_name]] <- base::list()
-        for (metabolite in metabolites_to_plot) {
-
-          # Initialize per-group result container
-          auroc_results_df2 <- base::data.frame(
-            Feature          = base::character(),
-            Group_Comparison = base::character(),
-            AUROC            = base::numeric(),
-            CI_Lower         = base::numeric(),
-            CI_Upper         = base::numeric(),
-            stringsAsFactors = FALSE
-          )
-
-          # # Determine direction
-          # if (direction == "auto2") {
-          #   direction <- base::ifelse(
-          #     stats::median(new_data2[[metabolite]][new_data2$Groups == group1]) < stats::median(new_data2[[metabolite]][new_data2$Groups == group2]),
-          #     ">",
-          #     "<"
-          #   )
-          # }
-
-          # Compute ROC
-          roc_obj2 <- pROC::roc(
-            response  = new_data2$Groups,
-            predictor = new_data2[[metabolite]],
-            levels    = base::c(group1, group2),
-            direction = direction
-          )
-
-          auc_val   <- base::as.numeric(pROC::auc(roc_obj2))
-          ci_vals   <- base::as.numeric(pROC::ci(roc_obj2))
-          auc_label <- base::paste0(
-            metabolite,
-            " (AUC = ", base::sprintf("%.3f", auc_val),
-            ", 95% CI: ", base::sprintf("%.3f", ci_vals[1]), "-", base::sprintf("%.3f", ci_vals[3]), ")"
-          )
-
-          auroc_results_df2 <- base::rbind(auroc_results_df2, base::data.frame(
-            Feature          = metabolite,
-            Group_Comparison = group_name,
-            AUROC            = auc_val,
-            CI_Lower         = ci_vals[1],
-            CI_Upper         = ci_vals[3]
-          ))
-
-          # Create ROC dataframe
-          roc_df <- base::data.frame(
-            x          = 1 - roc_obj2$specificities,
-            y          = roc_obj2$sensitivities,
-            Label      = auc_label
-          ) %>% dplyr::arrange(y)
-
-          # Plot
-          now_plot_iden_met <- ggplot2::ggplot() +
-            ggplot2::geom_line(
-              data = roc_df,
-              ggplot2::aes(x = x, y = y, color = Label),
-              size = 1.2
-            ) +
-            ggplot2::labs(
-              title = base::paste("ROC Curves -", group_name),
-              x     = "1 - Specificity",
-              y     = "Sensitivity",
-              color = "Metabolite (AUC, 95% CI)"
-            ) +
-            ggplot2::theme_minimal() +
-            ggplot2::theme(legend.position = "bottom")
-
-          base::print(now_plot_iden_met)
-
-          auroc_results$plots_identifiedMetabolites[[group_name]][[metabolite]] <- now_plot_iden_met
-        }
-      }
-    }
+    }, error = function(e) {
+      warning("Failed to compute ROC for feature ", feature_name, ": ", e$message)
+    })
   }
 
-  return(auroc_results)
+  # Sort by AUC (descending)
+  auroc_df <- auroc_df %>%
+    dplyr::arrange(dplyr::desc(AUROC))
+
+  return(auroc_df)
+}
+
+#' Create ROC plot for top features
+#' @keywords internal
+.create_roc_plot <- function(feature_data, auroc_df, group1, group2, group_name,
+                             direction, top_n) {
+
+  # Get top features
+  top_features <- head(auroc_df, min(top_n, nrow(auroc_df)))
+
+  if (nrow(top_features) == 0) {
+    warning("No features available for plotting")
+    return(ggplot2::ggplot())
+  }
+
+  # Determine colors
+  n_features <- nrow(top_features)
+  if (n_features <= 8) {
+    colors <- RColorBrewer::brewer.pal(max(3, n_features), "Dark2")[1:n_features]
+  } else {
+    colors <- grDevices::rainbow(n_features)
+  }
+
+  # Initialize plot and data for legend ordering
+  gg_roc <- ggplot2::ggplot()
+  legend_data <- data.frame()
+
+  # Add ROC curves
+  for (i in seq_len(nrow(top_features))) {
+    feature <- top_features$Feature[i]
+    auc_val <- top_features$AUROC[i]
+    ci_low <- top_features$CI_Lower[i]
+    ci_up <- top_features$CI_Upper[i]
+
+    # Determine direction for this curve
+    roc_direction <- direction
+    if (direction == "auto") {
+      median_group1 <- median(feature_data[[feature]][feature_data$Groups == group1], na.rm = TRUE)
+      median_group2 <- median(feature_data[[feature]][feature_data$Groups == group2], na.rm = TRUE)
+      roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
+    }
+
+    # Compute ROC
+    roc_obj <- pROC::roc(
+      response = feature_data$Groups,
+      predictor = feature_data[[feature]],
+      levels = c(group1, group2),
+      direction = roc_direction,
+      quiet = TRUE
+    )
+
+    # Create ROC data frame
+    roc_df <- data.frame(
+      x = 1 - roc_obj$specificities,
+      y = roc_obj$sensitivities,
+      Feature = sprintf("%s (AUC = %.3f) (95%% CI: %.3f-%.3f)",
+                        feature, auc_val, ci_low, ci_up)
+    ) %>%
+      dplyr::arrange(y)
+
+    # Add to plot
+    gg_roc <- gg_roc +
+      ggplot2::geom_line(
+        data = roc_df,
+        ggplot2::aes(x = x, y = y, color = Feature),
+        size = 1.2
+      )
+
+    # Store for legend ordering
+    legend_data <- rbind(legend_data, data.frame(
+      Feature = sprintf("%s (AUC = %.3f) (95%% CI: %.3f-%.3f)",
+                        feature, auc_val, ci_low, ci_up),
+      AUC = auc_val
+    ))
+  }
+
+  # Order legend by AUC (descending)
+  legend_data <- legend_data %>%
+    dplyr::arrange(dplyr::desc(AUC))
+
+  # Finalize plot
+  final_plot <- gg_roc +
+    ggplot2::scale_color_manual(
+      values = colors,
+      breaks = legend_data$Feature
+    ) +
+    ggplot2::labs(
+      title = sprintf("Top %d Features' ROC Curves - %s", min(top_n, nrow(top_features)), group_name),
+      x = "1 - Specificity",
+      y = "Sensitivity",
+      color = "Feature (AUC, 95% CI)"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      legend.position = c(0.8, 0.2),
+      plot.title = ggplot2::element_text(size = 12, hjust = 0.5),
+      legend.text = ggplot2::element_text(size = 8),
+      legend.key.width = ggplot2::unit(1.5, "lines")
+    )
+
+  return(final_plot)
+}
+
+#' Create individual plots for specified metabolites
+#' @keywords internal
+.create_individual_plots <- function(data_PP, data_DR, data_FC, data_CA, plot_iden_met,
+                                     group1, group2, group_name, groups, non_qc_indices,
+                                     direction, confidence_level) {
+
+  individual_plots <- list()
+
+  tryCatch({
+    # Get merged data (without filtering)
+    merged_data_full <- .extract_and_merge_data(data_DR, data_FC, data_CA, group_name)
+
+    if (is.null(merged_data_full)) {
+      return(individual_plots)
+    }
+
+    # Find available metabolites
+    available_metabolites <- intersect(plot_iden_met, merged_data_full$Feature)
+
+    if (length(available_metabolites) == 0) {
+      warning("None of the specified metabolites found in data for ", group_name)
+      return(individual_plots)
+    }
+
+    # Prepare data matrix
+    feature_data <- .prepare_feature_data(data_PP, available_metabolites,
+                                          groups, non_qc_indices)
+
+    # Create individual plots
+    for (metabolite in available_metabolites) {
+
+      tryCatch({
+        # Determine direction for ROC
+        roc_direction <- direction
+        if (direction == "auto") {
+          median_group1 <- median(feature_data[[metabolite]][feature_data$Groups == group1], na.rm = TRUE)
+          median_group2 <- median(feature_data[[metabolite]][feature_data$Groups == group2], na.rm = TRUE)
+          roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
+        }
+
+        # Compute ROC
+        roc_obj <- pROC::roc(
+          response = feature_data$Groups,
+          predictor = feature_data[[metabolite]],
+          levels = c(group1, group2),
+          direction = roc_direction,
+          quiet = TRUE
+        )
+
+        # Get AUC and CI
+        auc_val <- as.numeric(pROC::auc(roc_obj))
+        ci_vals <- as.numeric(pROC::ci(roc_obj, conf.level = confidence_level))
+
+        # Create plot data
+        roc_df <- data.frame(
+          x = 1 - roc_obj$specificities,
+          y = roc_obj$sensitivities,
+          Label = sprintf("%s (AUC = %.3f, 95%% CI: %.3f-%.3f)",
+                          metabolite, auc_val, ci_vals[1], ci_vals[3])
+        ) %>%
+          dplyr::arrange(y)
+
+        # Create plot
+        individual_plot <- ggplot2::ggplot() +
+          ggplot2::geom_line(
+            data = roc_df,
+            ggplot2::aes(x = x, y = y, color = Label),
+            size = 1.2
+          ) +
+          ggplot2::labs(
+            title = sprintf("ROC Curve - %s", group_name),
+            x = "1 - Specificity",
+            y = "Sensitivity",
+            color = "Metabolite (AUC, 95% CI)"
+          ) +
+          ggplot2::theme_minimal() +
+          ggplot2::theme(
+            legend.position = "bottom",
+            plot.title = ggplot2::element_text(size = 12, hjust = 0.5),
+            legend.text = ggplot2::element_text(size = 10)
+          )
+
+        # Display and store plot
+        print(individual_plot)
+        individual_plots[[metabolite]] <- individual_plot
+
+      }, error = function(e) {
+        warning("Failed to create plot for metabolite ", metabolite, ": ", e$message)
+      })
+    }
+
+  }, error = function(e) {
+    warning("Error creating individual plots for ", group_name, ": ", e$message)
+  })
+
+  return(individual_plots)
+}
+
+# Additional Utility Functions --------------------------------------------
+
+#' Get AUROC summary statistics
+#'
+#' @description Extract summary statistics from AUROC results
+#' @param auroc_results List returned by perform_AUROC
+#' @return Data frame with summary statistics
+#' @export
+get_auroc_summary <- function(auroc_results) {
+
+  if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
+    stop("Input must be results from perform_AUROC function")
+  }
+
+  # Extract all results data frames
+  result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
+
+  if (length(result_names) == 0) {
+    warning("No AUROC results found")
+    return(data.frame())
+  }
+
+  # Combine all results
+  all_results <- do.call(rbind, lapply(result_names, function(name) {
+    auroc_results[[name]]
+  }))
+
+  # Calculate summary statistics
+  summary_stats <- data.frame(
+    Total_Comparisons = auroc_results$summary$total_comparisons,
+    Processed_Comparisons = auroc_results$summary$processed_comparisons,
+    Total_Features = nrow(all_results),
+    Mean_AUC = mean(all_results$AUROC, na.rm = TRUE),
+    Median_AUC = median(all_results$AUROC, na.rm = TRUE),
+    Min_AUC = min(all_results$AUROC, na.rm = TRUE),
+    Max_AUC = max(all_results$AUROC, na.rm = TRUE),
+    Features_AUC_Above_0.7 = sum(all_results$AUROC > 0.7, na.rm = TRUE),
+    Features_AUC_Above_0.8 = sum(all_results$AUROC > 0.8, na.rm = TRUE),
+    Features_AUC_Above_0.9 = sum(all_results$AUROC > 0.9, na.rm = TRUE)
+  )
+
+  return(summary_stats)
+}
+
+#' Export AUROC results to file
+#'
+#' @description Export AUROC analysis results to CSV files
+#' @param auroc_results List returned by perform_AUROC
+#' @param output_dir Character. Directory to save results
+#' @param file_prefix Character. Prefix for output files
+#' @return Invisible NULL
+#' @export
+export_auroc_results <- function(auroc_results, output_dir = ".", file_prefix = "AUROC") {
+
+  if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
+    stop("Input must be results from perform_AUROC function")
+  }
+
+  # Create output directory if it doesn't exist
+  if (!dir.exists(output_dir)) {
+    dir.create(output_dir, recursive = TRUE)
+  }
+
+  # Export summary
+  summary_stats <- get_auroc_summary(auroc_results)
+  if (nrow(summary_stats) > 0) {
+    utils::write.csv(summary_stats,
+                     file.path(output_dir, paste0(file_prefix, "_summary.csv")),
+                     row.names = FALSE)
+  }
+
+  # Export individual comparison results
+  result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
+
+  for (name in result_names) {
+    comparison <- gsub("^data_results_", "", name)
+    safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
+    filename <- paste0(file_prefix, "_", safe_comparison, ".csv")
+
+    utils::write.csv(auroc_results[[name]],
+                     file.path(output_dir, filename),
+                     row.names = FALSE)
+  }
+
+  # Export merged data
+  merged_names <- names(auroc_results)[grepl("^data_Merged_", names(auroc_results))]
+
+  for (name in merged_names) {
+    comparison <- gsub("^data_Merged_", "", name)
+    safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
+    filename <- paste0(file_prefix, "_merged_", safe_comparison, ".csv")
+
+    utils::write.csv(auroc_results[[name]],
+                     file.path(output_dir, filename),
+                     row.names = FALSE)
+  }
+
+  message("AUROC results exported to: ", output_dir)
+  invisible(NULL)
+}
+
+#' Plot AUROC distribution
+#'
+#' @description Create histogram of AUC values across all comparisons
+#' @param auroc_results List returned by perform_AUROC
+#' @param bins Integer. Number of histogram bins
+#' @return ggplot2 object
+#' @export
+plot_auroc_distribution <- function(auroc_results, bins = 20) {
+
+  if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
+    stop("Input must be results from perform_AUROC function")
+  }
+
+  # Extract all AUC values
+  result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
+
+  if (length(result_names) == 0) {
+    warning("No AUROC results found")
+    return(ggplot2::ggplot())
+  }
+
+  all_aucs <- do.call(c, lapply(result_names, function(name) {
+    auroc_results[[name]]$AUROC
+  }))
+
+  # Create histogram
+  auc_df <- data.frame(AUC = all_aucs)
+
+  p <- ggplot2::ggplot(auc_df, ggplot2::aes(x = AUC)) +
+    ggplot2::geom_histogram(bins = bins, fill = "steelblue", alpha = 0.7, color = "white") +
+    ggplot2::geom_vline(xintercept = 0.5, linetype = "dashed", color = "red", size = 1) +
+    ggplot2::geom_vline(xintercept = 0.7, linetype = "dashed", color = "orange", size = 1) +
+    ggplot2::geom_vline(xintercept = 0.8, linetype = "dashed", color = "green", size = 1) +
+    ggplot2::annotate("text", x = 0.5, y = Inf, label = "Random (0.5)",
+                      vjust = 1.5, hjust = -0.1, color = "red") +
+    ggplot2::annotate("text", x = 0.7, y = Inf, label = "Good (0.7)",
+                      vjust = 1.5, hjust = -0.1, color = "orange") +
+    ggplot2::annotate("text", x = 0.8, y = Inf, label = "Excellent (0.8)",
+                      vjust = 1.5, hjust = -0.1, color = "green") +
+    ggplot2::labs(
+      title = "Distribution of AUC Values",
+      subtitle = paste("Total features:", length(all_aucs)),
+      x = "Area Under Curve (AUC)",
+      y = "Frequency"
+    ) +
+    ggplot2::theme_minimal() +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(hjust = 0.5)
+    )
+
+  return(p)
 }

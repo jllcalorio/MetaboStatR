@@ -363,7 +363,8 @@ perform_pls_analysis <- function(data, pls_data, non_qc_indices, group_combinati
     data_pair <- data_matrix[current_groups, ]
     y_pair <- factor(data$Metadata$Group[current_groups])
 
-    comparison_label <- paste0(group1, "vs", group2, sep = "_")
+    # comparison_label <- paste0(group1, "vs", group2, sep = "_")
+    comparison_label <- paste0(group1, " vs. ", group2)
 
     # Perform analysis based on method
     model_results <- tryCatch({
@@ -437,7 +438,8 @@ perform_splsda_analysis <- function(data, pls_data, non_qc_indices, group_combin
     data_pair <- data_matrix[current_groups, ]
     y_pair <- factor(data$Metadata$Group[current_groups])
 
-    comparison_label <- paste0(group1, "vs", group2, sep = "_")
+    # comparison_label <- paste0(group1, "vs", group2, sep = "_")
+    comparison_label <- paste0(group1, " vs. ", group2)
 
     model_results <- tryCatch({
 
@@ -478,7 +480,8 @@ perform_splsda_analysis <- function(data, pls_data, non_qc_indices, group_combin
 generate_feature_analysis <- function(results, model_results, data_pair, y_pair,
                                       group1, group2, method, top_features, verbose) {
 
-  comparison_label <- paste0(group1, "vs", group2, sep = "_")
+  # comparison_label <- paste0(group1, "vs", group2, sep = "_")
+  comparison_label <- paste0(group1, " vs. ", group2)
 
   if (method %in% c("plsda", "oplsda")) {
 
@@ -548,9 +551,9 @@ create_vip_abundance_plot <- function(results, top_vip, abundance_data,
                                     ggplot2::aes(x = Group, y = Feature, fill = Abundance)) +
     ggplot2::geom_tile() + # color = "white", size = 0.1
     ggplot2::scale_fill_gradient(low = "darkgreen", high = "red" #mid = "white",
-                                  # ,midpoint = median(abundance_data$Abundance, na.rm = TRUE),
-                                  # name = "Abundance"
-                                  ) +
+                                 # ,midpoint = median(abundance_data$Abundance, na.rm = TRUE),
+                                 # name = "Abundance"
+    ) +
     ggplot2::labs(title = NULL, x = NULL, y = NULL) +
     ggplot2::theme_minimal() +
     ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
@@ -661,7 +664,8 @@ generate_splot <- function(results, model_results, data_pair, group1, group2) {
 generate_splsda_analysis <- function(results, model_results, data_pair, y_pair,
                                      group1, group2, top_features, verbose) {
 
-  comparison_label <- paste0(group1, "vs", group2, sep = "_")
+  # comparison_label <- paste0(group1, "vs", group2, sep = "_")
+  comparison_label <- paste0(group1, " vs. ", group2)
 
   # Extract selected features
   selected_features <- tryCatch({

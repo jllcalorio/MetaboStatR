@@ -14,5 +14,7 @@ globalVariables(c(
   "Covariance", "Correlation", "before", "after", "correction",
   "sample_id", "intensity", "log2_fc", "p-value", "Fold_Change",
   "Log2_Fold_Change", "Adjusted_P_Value", "Significance",
-  "scalePCA", "base", "purrr", "desc", "y", "x", "labeller"
+  "scalePCA", "base", "purrr", "desc", "y", "x", "labeller",
+
+  "group", "value", "Loading", "Comp1", "Comp2", "PC_num", "batch", "var", "sd"
 ))

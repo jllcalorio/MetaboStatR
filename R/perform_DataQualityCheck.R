@@ -156,7 +156,7 @@ perform_DataQualityCheck <- function(
     results$processing_log$completion_time <- Sys.time()
     results$processing_log$success <- TRUE
 
-    if (verbose) message("✓ Data quality check completed successfully!")
+    if (verbose) message("... Data quality check completed successfully!")
 
   }, error = function(e) {
     results$processing_log$error <- e$message
@@ -240,7 +240,7 @@ load_and_validate_file <- function(file_location, sheet_name, skip_rows,
   }
 
   if (verbose) {
-    message("✓ File loaded successfully: ", nrow(raw_data), " rows × ", ncol(raw_data), " columns")
+    message("... File loaded successfully: ", nrow(raw_data), " rows X ", ncol(raw_data), " columns")
   }
 
   return(raw_data)
@@ -352,7 +352,7 @@ clean_data_identifiers <- function(raw_data, verbose) {
   }
 
   if (verbose) {
-    message("✓ Special characters cleaned from identifiers (excluding Group row)")
+    message("... Special characters cleaned from identifiers (excluding Group row)")
   }
 
   return(raw_data)
@@ -427,7 +427,7 @@ validate_uniqueness_constraints <- function(raw_data) {
     stop("Duplicate sample names found: ", paste(sample_duplicates, collapse = ", "),
          call. = FALSE)
   }
-  validation_results$sample_names <- "✓ All sample names are unique"
+  validation_results$sample_names <- "... All sample names are unique"
 
   # Check injection sequence uniqueness
   injection_seq <- as.numeric(raw_data$Injection)
@@ -440,7 +440,7 @@ validate_uniqueness_constraints <- function(raw_data) {
     stop("Duplicate injection sequences found: ", paste(injection_duplicates, collapse = ", "),
          call. = FALSE)
   }
-  validation_results$injection_sequence <- "✓ All injection sequences are unique"
+  validation_results$injection_sequence <- "... All injection sequences are unique"
 
   # Check feature names uniqueness
   required_headers <- c("Sample", "SubjectID", "Replicate", "Group",
@@ -451,7 +451,7 @@ validate_uniqueness_constraints <- function(raw_data) {
     stop("Duplicate feature/metabolite names found: ", paste(feature_duplicates, collapse = ", "),
          call. = FALSE)
   }
-  validation_results$feature_names <- "✓ All feature/metabolite names are unique"
+  validation_results$feature_names <- "... All feature/metabolite names are unique"
 
   return(validation_results)
 }
@@ -507,7 +507,7 @@ validate_qc_rules <- function(raw_data) {
   }
 
   return(list(
-    message = "✓ QC rules validated successfully",
+    message = "... QC rules validated successfully",
     qc_columns = length(qc_cols),
     qc_samples = sum(grepl("SQC|EQC|QC", raw_data$Group, ignore.case = TRUE))
   ))
@@ -557,7 +557,7 @@ validate_numeric_features <- function(raw_data) {
   }
 
   return(list(
-    message = "✓ All feature data is numeric or convertible to numeric",
+    message = "... All feature data is numeric or convertible to numeric",
     feature_count = ncol(feature_cols),
     sample_count = nrow(feature_cols)
   ))
@@ -602,361 +602,3 @@ generate_metadata_summary <- function(raw_data) {
 
   return(summary_stats)
 }
-
-
-
-
-
-
-#' #' Perform Data Quality Check
-#' #'
-#' #' @description
-#' #' This function imports Excel or text files and performs quality controls prior to usage in the
-#' #' succeeding functions. This is ideally used to check data requirements such as uniqueness of
-#' #' inputs in the "Sample" row, uniqueness of Features/Metabolites, data types, and the
-#' #' overall characteristics of the data. This also cleans the sample names, replicates, groups,
-#' #' and feature/metabolite names from its special characters and replaces with underscores, except @ and . (period).
-#' #' This is done to avoid errors later on during manual data extraction, plotting, etc, where R might
-#' #' encounter an error from column/row names.
-#' #'
-#' #' @param file_location String. A string of the location of the data in the computer. Must have the following characteristics. Other files may be loaded as long as they can be read by `utils::read.delim`.
-#' #'   \itemize{
-#' #'     \item 1st row name is "Sample": The sample names, ideally shortened versions to make it easier to view in visualizations; without spaces.
-#' #'     \item 2nd row name is "SubjectID": Must be numeric to be sorted correctly. Can contain non-unique identifiers of "Sample" names, usually used when "Replicate" is present. Also referred to as the individuals in the data.
-#' #'     \item 3rd row name is "Replicate": The replicate IDs of Samples. Ideally non-unique identifiers.
-#' #'     \item 4th row name is "Group": Contains QC and the groups (with/out spaces).
-#' #'     \item 5th row name is "Batch": The batch numbers.
-#' #'     \item 6th row name is "Injection": The injection sequence.
-#' #'     \item 7th row name is "Normalization": Concentration markers to be used during data normalization to correct for variations in e.g., urine, concentration between samples. Can be osmolality values, specific gravity, etc.
-#' #'     \item 8th row name is "Response": Numeric. Ideally used when the the response variable (dependent variable) to be used is not "Group".
-#' #'     \item Others requirement/s are:
-#' #'     \itemize{
-#' #'       \item The 1st 8 rows above must be present.
-#' #'       \item After the 8th row (Response), are the features possibly in a mass-to-charge ratio (m/z) and retention time format. Example `199.101@0.111` assuming you rounded off the decimal places to 3 decimal places (suggested for a cleaner output in visualizations).
-#' #'       \item If the Normalization values, SubjectID, Replicate, and Response are not present, leave the rows blank except for the words in the 1st column (e.g., "Normalization' ).
-#' #'       \item Missing values must be left blank or encoded as 0. Blanks and 0s are identified as NAs or missing values.
-#' #'       }
-#' #'     }
-#' #' @param sheet_name String. The name of the worksheet where the data is located. Ignored when data type is ".csv".
-#' #' @param skip_rows Numeric. The number of rows in the data to skip reading.
-#' #' @param separator String. The separator in the ".csv" or ".txt" file. If this fails, it's likely that the file is supposed to be delimited, which should be saved as ".csv", ".tsv", or ".txt".
-#' #'   \itemize{
-#' #'     \item ",": A comma. From a comma-separated file (csv).
-#' #'     \item "/t": A tab From a tab-separated file (.txt or .tsv).
-#' #'     \item Also accepts other delimiters, as long as it is consistent in your data.
-#' #'     }
-#' #'     Defaults to ",". Ignored when the file is ".xlsx".
-#' #' @returns A data frame ready to be used in the `perform_PreprocessingPeakData` function in the `MetaboStatR` package. The data frame is sorted in ascending order according to the injection sequence, as required during the "drift- and batch-correction" stage.
-#' #' @export
-#' #'
-#' #' @examples
-#' #' \dontrun{
-#' #' # Using the default parameters
-#' #' # The location typically looks like
-#' #' # "C:/Users/Documents/Metabolomics Data Analysis Folder/file_name_of_data.xlsx"
-#' #' perform_DataQualityCheck(
-#' #'  file_location = the_complete_location_of_your_data
-#' #' )
-#' #' }
-#' #'
-#' perform_DataQualityCheck <- function(
-#'     file_location = NULL,
-#'     sheet_name    = NULL,
-#'     skip_rows     = 0,
-#'     separator     = ","
-#' ) {
-#'
-#'   qualityCheckResults                <- base::list()
-#'   qualityCheckResults$FunctionOrigin <- "perform_DataQualityCheck"
-#'   qualityCheckResults$FileLocation   <- file_location
-#'   qualityCheckResults$SheetName      <- sheet_name
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # ----------------------------------------------- Load the data -----------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   message("Reading the file...")
-#'
-#'   # If file_location is NULL, then choose a file.
-#'   if (base::is.null(file_location)) {
-#'     if (base::requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-#'       file_location <- rstudioapi::selectFile(
-#'         caption = "Select a file"
-#'         # ,filter = "CSV Files (*.csv)"
-#'       )
-#'     } else {
-#'       # This part ideally should not be used, but just in case the above fails.
-#'       file_location <- base::file.choose()
-#'     }
-#'   }
-#'
-#'   # Check if file exists
-#'   if (!base::file.exists(file_location)) {
-#'     stop("File does not exist: ", file_location)
-#'   }
-#'
-#'   # Extract file extension
-#'   file_ext <- base::tolower(tools::file_ext(file_location))
-#'
-#'   # Read data based on file type
-#'   raw_data <- base::suppressMessages(
-#'     switch(file_ext,
-#'            "xlsx" = {
-#'              # Read Excel file
-#'              readxl::read_excel(
-#'                file_location,
-#'                sheet = sheet_name,
-#'                range = NULL,
-#'                col_names = FALSE,
-#'                skip = skip_rows
-#'              )
-#'            },
-#'            "csv" = {
-#'              # Read CSV file
-#'              utils::read.csv(
-#'                file_location,
-#'                header = FALSE,
-#'                sep = separator,
-#'                skip = skip_rows
-#'              )
-#'            },
-#'            "txt" = {
-#'              # Read text file (assuming tab-delimited by default)
-#'              utils::read.delim(
-#'                file_location,
-#'                header = FALSE,
-#'                sep = separator,
-#'                skip = skip_rows
-#'              )
-#'            },
-#'            "tsv" = {
-#'              # Read text file (assuming tab-delimited by default)
-#'              utils::read.delim(
-#'                file_location,
-#'                header = FALSE,
-#'                sep = separator,
-#'                skip = skip_rows
-#'              )
-#'            },
-#'            {
-#'              # Unsupported file type
-#'              stop("Unsupported file type: ", file_ext,
-#'                   ". Supported types are: xlsx, csv, tsv, txt")
-#'            }
-#'     )
-#'   )
-#'
-#'   message(paste0("The file '", file_location, "' has been read and loaded successfully."))
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # ----------- Function to clean problematic characters in Sample names and Feature/Metabolite names -----------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   message("Cleaning the 'Sample', 'Replicate', 'Group', and 'Feature/Metabolite names' with its special characters. Removing colons, semi-colons, parentheses, brackets, braces, dashes, stars, etc...")
-#'
-#'   # Helper function to clean character strings
-#'   clean_text <- function(x) {
-#'     x <- base::as.character(x)
-#'     x <- stringr::str_replace_all(x, "[^a-zA-Z0-9@._]", "_") # @, . (period), underscore. and numbers from 0-9
-#'     x <- stringr::str_replace_all(x, " {2,}", " ") # multiple spaces
-#'     x <- stringr::str_replace_all(x, " ", "_") # a space
-#'     x <- stringr::str_trim(x) # trailing spaces
-#'     x <- stringr::str_replace_all(x, "_{2,}", "_") # multiple underscores
-#'     x <- stringr::str_replace_all(x, "^_+|_+$", "")
-#'     return(x)
-#'   }
-#'
-#'   # Clean values in a specific column
-#'   clean_problematic_chars_col <- function(data, column = 1) {
-#'     data[[column]] <- clean_text(data[[column]])
-#'     return(data)
-#'   }
-#'
-#'   # Clean values in a specific row
-#'   clean_problematic_chars_row <- function(data, row = 1) {
-#'     cleaned_row <- base::lapply(data[row, ], clean_text)  # keep as list to preserve structure
-#'     data[row, ] <- cleaned_row
-#'     return(data)
-#'   }
-#'
-#'   # Apply cleaning
-#'   raw_data <- raw_data %>%
-#'     clean_problematic_chars_col(column = 1) %>%
-#'     clean_problematic_chars_row(row    = 1) %>%
-#'     clean_problematic_chars_row(row    = 3) %>%
-#'     clean_problematic_chars_row(row    = 4)
-#'
-#'   message("Cleaning complete.")
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # ------------------------------------ Check if required rows are present -------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   message("Checking for required rows...")
-#'
-#'   # Feature/Metabolite names uniqueness, remove first not needed columns
-#'   required_headers <- base::c("Sample", "SubjectID", "Replicate", "Group", "Batch", "Injection", "Normalization", "Response")
-#'   if (!all(required_headers %in% base::as.vector(base::unlist(raw_data[, 1])))) {
-#'     stop("Data preprocessing is halted. The raw data does not contain the expected rows (Sample, SubjectID, Replicate, Group, Batch, Injection, Normalization, Response). Check for typo or the 1st 8 rows in your file.")
-#'   }
-#'
-#'   message("The required rows are present.")
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------- Check if there are duplicates in some rows ---------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # ------------------------------------- Function to check for duplicates --------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   check_duplicates <- function(data, data_name, action = "stop") {
-#'     if (base::length(unique(data)) != base::length(data)) {
-#'       duplicated_values <- base::unique(data[base::duplicated(data) | base::duplicated(data, fromLast = TRUE)])
-#'       message_text_stop <- base::paste0("There are duplicate ", data_name, " in your data, which are required to be unique to proceed. Here are the duplicated ", data_name, ": ",
-#'                                         base::paste(duplicated_values, collapse = ", "))
-#'       message_text_warning <- base::paste0("There are duplicate ", data_name, " in your data, which you may want to be unique. Here are the duplicated ", data_name, ": ",
-#'                                            base::paste(duplicated_values, collapse = ", "))
-#'
-#'       if (action == "stop") {
-#'         stop(message_text_stop)
-#'       } else if (action == "warning") {
-#'         warning(message_text_warning)
-#'       } else {
-#'         stop("Invalid action parameter. Use 'stop' or 'warning'.")
-#'       }
-#'     }
-#'   }
-#'
-#'   message("Checking for duplicate 'Sample names' and 'Features/metabolites names'...")
-#'
-#'   # Transpose the data
-#'   raw_data <- base::as.data.frame(base::t(raw_data)) # The data is now Samples x Features (row x column)
-#'
-#'   # Apply checks for sample names and injection orders
-#'   check_duplicates(base::as.vector(base::unlist(raw_data[, 1])), "Sample names",     action = "stop")
-#'   check_duplicates(base::as.vector(base::unlist(raw_data[, 6])), "Injection orders", action = "stop")
-#'
-#'   # Apply checks for features/metabolites
-#'   all_column_names       <- base::as.vector(base::unlist(raw_data[1, ])) # Get column names excluding required_headers and check for duplicates
-#'   remaining_column_names <- all_column_names[!all_column_names %in% required_headers]
-#'   check_duplicates(remaining_column_names, "Features/metabolites")
-#'
-#'   message("The 'Sample names' and the 'Features/metabolites' are unique, as required.")
-#'
-#'   # If all is good, proceed with the remaining tests
-#'   raw_data <- raw_data %>%
-#'     stats::setNames(base::as.character(.[1, ])) %>% .[-1, ] %>% # Set column names from 1st row (features, etc.)
-#'     # Arrange by Injection Sequence
-#'     dplyr::mutate(Injection = base::as.numeric(Injection)) %>% # Convert to numeric so it will be arranged correctly in the line below
-#'     dplyr::arrange(Injection) # Sort by injection, needed in drift-correction
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------- Check if there are no values in the columns on the same row as QC ----------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   message("Checking if there are no values in the columns (SubjectID, Replicate, Normalization, and Response) on the same row as QC...")
-#'
-#'   # Transpose the data
-#'   raw_data <- base::as.data.frame(base::t(raw_data)) # The data is now Features x Samples (row x column)
-#'
-#'   check_qc_rule_rows <- function(df) {
-#'     # Find columns where row 4 contains SQC, EQC, or QC
-#'     qc_cols <- base::which(base::grepl("SQC|EQC|QC", df[4, ], ignore.case = TRUE))
-#'
-#'     if (base::length(qc_cols) == 0) {
-#'       base::message("No QC columns found.")
-#'       return(base::invisible(NULL))
-#'     }
-#'
-#'     # Check if rows 2, 3, 7, 8 are empty (NA or empty string) for QC columns
-#'     rows_to_check <- base::c(2, 3, 7, 8)
-#'     violations <- base::c()
-#'
-#'     for (col in qc_cols) {
-#'       for (row in rows_to_check) {
-#'         if (base::nrow(df) >= row && base::ncol(df) >= col) {
-#'           if (!base::is.na(df[row, col]) && df[row, col] != "") {
-#'             violations <- base::c(violations, col)
-#'             break
-#'           }
-#'         }
-#'       }
-#'     }
-#'
-#'     if (base::length(violations) > 0) {
-#'       base::stop("QC rule violations found. QC columns in 'Group' row must have empty values in rows 'SubjectID', 'Replicate', 'Normalization', and 'Response'.")
-#'       # No specific column because the data frame has been sorted according to 'Injection' row, hence, actual column number is not the same as the original column number.
-#'     }
-#'
-#'     base::message("No QC rule violations found. The rows 'SubjectID', 'Replicate', 'Normalization', and 'Response' do not have values in their QC columns in the 'Group' row, as required.")
-#'     return(base::invisible(NULL))
-#'   }
-#'
-#'   # Apply function
-#'   check_qc_rule_rows(raw_data)
-#'
-#'   # Transpose back the data
-#'   raw_data <- base::as.data.frame(base::t(raw_data)) # The data is now Samples x Features (row x column)
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------- Check if there are not numbers in features/metabolites ---------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   message("Checking data in the features/metabolites...")
-#'
-#'   # Metadata
-#'   metadata <- raw_data %>%
-#'     dplyr::select(dplyr::all_of(required_headers))
-#'
-#'   # Remove columns that are not part of the features/metabolites
-#'   raw_data <- raw_data %>%
-#'     dplyr::select(-dplyr::all_of(required_headers))
-#'
-#'   # Check for numeric-ness of data (can handle conversion)
-#'   check_numeric <- function(data, data_name) {
-#'     numeric_data   <- data %>% base::as.data.frame()
-#'     numeric_data[] <- base::lapply(data, base::as.numeric) # Convert to numeric
-#'
-#'     # Check if conversion introduced NAs (meaning non-convertible values)
-#'     if (base::any(base::is.na(numeric_data) & !base::is.na(data))) {
-#'       non_convertible <- base::unique(data[base::is.na(numeric_data) & !base::is.na(data)])
-#'       stop(base::paste0("There are non-numeric values in your '", data_name, "' data that cannot be converted to numbers. Here are the non-convertible values: ",
-#'                         base::paste(non_convertible, collapse = ", ")))
-#'     }
-#'
-#'     return(numeric_data)  # Return the converted data
-#'   }
-#'
-#'   message("All data in the features/metabolites are either numbers, 0s, or NAs, as required.")
-#'
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # ------------------- Combine the metadata and features/metabolites after all preprocessing -------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'   # -------------------------------------------------------------------------------------------------------------
-#'
-#'   raw_data <- base::cbind(metadata, raw_data) %>%
-#'     base::t() %>% # The data is now Features x Samples (row x column)
-#'     base::cbind(base::rownames(.), .) %>%
-#'     base::`rownames<-`(NULL) %>%
-#'     base::as.data.frame()
-#'
-#'   qualityCheckResults$raw_data <- raw_data
-#'
-#'   message("Data quality check is complete. The data is ready for analysis.")
-#'
-#'   return(qualityCheckResults)
-#' }

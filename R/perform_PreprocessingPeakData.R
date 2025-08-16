@@ -17,6 +17,7 @@
 #' @param spline_smooth_param_limit Vector. A vector of format `c(min, max)` for spline parameter limits.
 #' @param log_scale Boolean. If `TRUE` (default), performs signal correction fit on log-scaled data.
 #' @param min_QC Numeric. Minimum number of QC samples required for signal correction per batch.
+#' @param removeUncorrectedFeatures Boolean. If `TRUE` (default), removes features that were not corrected by QCRSC due to insufficient QC samples meeting the min_QC threshold.
 #' @param dataNormalize String. Data normalization method.
 #' @param refSample String. Reference sample for `dataNormalize = "PQN2"`.
 #' @param groupSample String. Used only if `dataNormalize = "groupPQN"`.
@@ -30,32 +31,39 @@
 #' @param verbose Logical. Whether to print detailed progress messages. Default TRUE.
 #'
 #' @returns A list containing results from all preprocessing steps.
+#'
+#' @importFrom stats quantile
+#'
 #' @export
 
 perform_PreprocessingPeakData <- function(
     raw_data,
-    outliers                  = NULL,
-    filterMissing             = 20,
-    filterMissing_by_group    = TRUE,
-    filterMissing_includeQC   = FALSE,
-    denMissing                = 5,
-    driftBatchCorrection      = TRUE,
-    spline_smooth_param       = 0,
-    spline_smooth_param_limit = c(-1.5, 1.5),
-    log_scale                 = TRUE,
-    min_QC                    = 5,
-    dataNormalize             = "Normalization",
-    refSample                 = NULL,
-    groupSample               = NULL,
-    reference_method          = "mean",
-    dataTransform             = "vsn",
-    dataScalePCA              = "meanSD",
-    dataScalePLS              = "mean2SD",
-    filterMaxRSD              = 30,
-    filterMaxRSD_by           = "EQC",
-    filterMaxVarSD            = 10,
-    verbose                   = TRUE
+    outliers                    = NULL,
+    filterMissing               = 20,
+    filterMissing_by_group      = TRUE,
+    filterMissing_includeQC     = FALSE,
+    denMissing                  = 5,
+    driftBatchCorrection        = TRUE,
+    spline_smooth_param         = 0,
+    spline_smooth_param_limit   = c(-1.5, 1.5),
+    log_scale                   = TRUE,
+    min_QC                      = 5,
+    removeUncorrectedFeatures   = TRUE,
+    dataNormalize               = "Normalization",
+    refSample                   = NULL,
+    groupSample                 = NULL,
+    reference_method            = "mean",
+    dataTransform               = "vsn",
+    dataScalePCA                = "meanSD",
+    dataScalePLS                = "mean2SD",
+    filterMaxRSD                = 30,
+    filterMaxRSD_by             = "EQC",
+    filterMaxVarSD              = 10,
+    verbose                     = TRUE
 ) {
+
+  # Empty list for results
+  listPreprocessed <- list()
 
   # Add timestamp start
   listPreprocessed$ProcessingTimestampStart <- Sys.time()
@@ -137,7 +145,7 @@ perform_PreprocessingPeakData <- function(
 
     # Logical parameter validation
     logical_params <- c("filterMissing_by_group", "filterMissing_includeQC",
-                        "driftBatchCorrection", "log_scale")
+                        "driftBatchCorrection", "log_scale", "removeUncorrectedFeatures")
     for (param_name in logical_params) {
       if (!is.logical(get(param_name))) {
         errors <- c(errors, paste(param_name, ": Must be logical (TRUE/FALSE)."))
@@ -192,6 +200,7 @@ perform_PreprocessingPeakData <- function(
       filterMissing_includeQC = filterMissing_includeQC,
       denMissing = denMissing,
       driftBatchCorrection = driftBatchCorrection,
+      removeUncorrectedFeatures = removeUncorrectedFeatures,
       dataNormalize = dataNormalize,
       dataTransform = dataTransform,
       dataScalePCA = dataScalePCA,
@@ -323,6 +332,9 @@ perform_PreprocessingPeakData <- function(
   num_na <- sum(is.na(df))
   msg(sprintf("Found %d missing values in the data.", num_na))
 
+  # Store number of missing data
+  listPreprocessed$n_missing <- num_na
+
   # Set rownames efficiently
   rownames(df) <- data_transposed$Sample
 
@@ -418,7 +430,7 @@ perform_PreprocessingPeakData <- function(
   listPreprocessed$data_no_NA <- df
   msg(sprintf("Imputed missing values using 1/%d of minimum positive value per feature.", denMissing))
 
-  # Optimized drift and batch correction
+  # Optimized drift and batch correction with uncorrected feature detection
   msg("Applying drift and batch correction...")
 
   if (driftBatchCorrection) {
@@ -429,8 +441,15 @@ perform_PreprocessingPeakData <- function(
     }
   }
 
+  # Initialize variables for tracking uncorrected features
+  uncorrected_features <- character(0)
+  features_removed_uncorrected <- 0
+
   if (driftBatchCorrection) {
     tryCatch({
+      # Store data before correction for comparison
+      df_before_correction <- df
+
       df_corrected <- pmp::QCRSC(
         df = df,
         order = listPreprocessed$Metadata$InjectionSequence,
@@ -443,8 +462,71 @@ perform_PreprocessingPeakData <- function(
         spar_lim = spline_smooth_param_limit
       )
 
-      df <- as.data.frame(t(df_corrected))
+      df_corrected <- as.data.frame(t(df_corrected))
       msg("Applied QC-RSC drift and batch correction.")
+
+      # Robust detection of uncorrected features
+      tryCatch({
+        msg("Identifying uncorrected features...")
+
+        # Ensure both datasets have same dimensions and column names
+        if (ncol(df_before_correction) != ncol(df_corrected) ||
+            nrow(df_before_correction) != nrow(df_corrected)) {
+          warning("Dimension mismatch between before/after correction data. Cannot identify uncorrected features.")
+        } else if (!identical(colnames(df_before_correction), colnames(df_corrected))) {
+          warning("Column name mismatch between before/after correction data. Cannot identify uncorrected features.")
+        } else {
+          # Compare each feature with tolerance for floating point precision
+          tolerance <- .Machine$double.eps^0.5
+
+          uncorrected_indices <- logical(ncol(df_before_correction))
+
+          for (i in seq_len(ncol(df_before_correction))) {
+            # Calculate maximum absolute difference for this feature
+            max_diff <- max(abs(df_before_correction[, i] - df_corrected[, i]), na.rm = TRUE)
+
+            # If difference is within tolerance, feature was not corrected
+            uncorrected_indices[i] <- max_diff <= tolerance
+          }
+
+          uncorrected_features <- colnames(df_before_correction)[uncorrected_indices]
+
+          msg(sprintf("Identified %d features that were not corrected due to insufficient QC samples.",
+                      length(uncorrected_features)))
+
+          # Store information about uncorrected features
+          listPreprocessed$UncorrectedFeatures <- list(
+            feature_names = uncorrected_features,
+            count = length(uncorrected_features),
+            reason = paste("Insufficient QC samples (< min_QC =", min_QC, ") for reliable correction")
+          )
+
+          # Remove uncorrected features if requested
+          if (removeUncorrectedFeatures && length(uncorrected_features) > 0) {
+            features_to_keep_corrected <- !colnames(df_corrected) %in% uncorrected_features
+            df_corrected <- df_corrected[, features_to_keep_corrected, drop = FALSE]
+            features_removed_uncorrected <- length(uncorrected_features)
+
+            msg(sprintf("Removed %d uncorrected features from dataset.", features_removed_uncorrected))
+
+            # Also remove from the before-correction data for consistency
+            df_before_correction <- df_before_correction[, features_to_keep_corrected, drop = FALSE]
+          } else if (!removeUncorrectedFeatures && length(uncorrected_features) > 0) {
+            msg(sprintf("Keeping %d uncorrected features in dataset as requested.", length(uncorrected_features)))
+          }
+        }
+
+      }, error = function(e) {
+        warning("Error in identifying uncorrected features: ", e$message, ". Proceeding without removal.")
+        listPreprocessed$UncorrectedFeatures <- list(
+          feature_names = character(0),
+          count = 0,
+          reason = paste("Could not identify uncorrected features due to error:", e$message)
+        )
+      })
+
+      # Update df with the corrected (and potentially filtered) data
+      df <- df_corrected
 
       # Handle any new NAs introduced by correction
       new_na_count <- sum(is.na(df)) - sum(is.na(listPreprocessed$data_no_NA))
@@ -460,19 +542,48 @@ perform_PreprocessingPeakData <- function(
           }
           return(x)
         })
+
+        # Store new number of missing data
+        listPreprocessed$new_n_missing <- new_na_count
       }
 
     }, error = function(e) {
       warning("Drift/batch correction failed: ", e$message, ". Proceeding without correction.")
       driftBatchCorrection <- FALSE
+      # Initialize empty uncorrected features info for failed correction
+      listPreprocessed$UncorrectedFeatures <- list(
+        feature_names = character(0),
+        count = 0,
+        reason = paste("Drift/batch correction failed:", e$message)
+      )
     })
   }
 
   if (!driftBatchCorrection) {
     msg("Skipping drift and batch correction.")
+    # Initialize empty uncorrected features info when correction is skipped
+    listPreprocessed$UncorrectedFeatures <- list(
+      feature_names = character(0),
+      count = 0,
+      reason = "Drift/batch correction was not performed"
+    )
   }
 
   listPreprocessed$data_driftBatchCorrected <- df
+
+  # Add dimension entry for uncorrected feature removal (even if no features were removed)
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After removing uncorrected features",
+               Samples = nrow(df),
+               Features = ncol(df))
+  )
+
+  if (features_removed_uncorrected > 0) {
+    msg(sprintf("Dataset after removing uncorrected features: %d samples X %d features",
+                nrow(df), ncol(df)))
+  }
+
   gc_if_needed()
 
   # Optimized normalization function
@@ -995,7 +1106,7 @@ perform_PreprocessingPeakData <- function(
     )
   }
 
-  # Add processing summary
+  # Add processing summary (updated to include uncorrected features info)
   listPreprocessed$ProcessingSummary <- list(
     total_samples_processed = nrow(listPreprocessed$Metadata),
     total_features_original = length(listPreprocessed$All_Features_Metabolites),
@@ -1004,6 +1115,8 @@ perform_PreprocessingPeakData <- function(
     outliers_removed = length(listPreprocessed$outliers_removed %||% character(0)),
     missing_values_imputed = sum(is.na(listPreprocessed$SamplesXFeatures)),
     drift_batch_correction_applied = driftBatchCorrection,
+    uncorrected_features_count = length(uncorrected_features),
+    uncorrected_features_removed = features_removed_uncorrected,
     normalization_method = dataNormalize,
     transformation_method = dataTransform,
     scaling_method_PCA = dataScalePCA,
@@ -1012,7 +1125,7 @@ perform_PreprocessingPeakData <- function(
     variance_filtering_applied = !is.null(filterMaxVarSD)
   )
 
-  # Add data quality metrics
+  # Add data quality metrics (updated)
   listPreprocessed$QualityMetrics <- list(
     data_completeness = 1 - sum(is.na(listPreprocessed$data_transformed)) /
       (nrow(listPreprocessed$data_transformed) * ncol(listPreprocessed$data_transformed)),
@@ -1021,7 +1134,11 @@ perform_PreprocessingPeakData <- function(
     feature_retention_rate_PLS = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered) /
       length(listPreprocessed$All_Features_Metabolites),
     sample_retention_rate = nrow(listPreprocessed$Metadata) /
-      (nrow(listPreprocessed$Metadata) + length(listPreprocessed$outliers_removed %||% character(0)))
+      (nrow(listPreprocessed$Metadata) + length(listPreprocessed$outliers_removed %||% character(0))),
+    uncorrected_features_percentage = ifelse(driftBatchCorrection,
+                                             length(uncorrected_features) /
+                                               length(listPreprocessed$All_Features_Metabolites) * 100,
+                                             0)
   )
 
   # Final cleanup
@@ -1035,13 +1152,35 @@ perform_PreprocessingPeakData <- function(
               nrow(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
               ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered)))
 
+  # Add summary message about uncorrected features
+  if (driftBatchCorrection) {
+    if (length(uncorrected_features) > 0) {
+      if (removeUncorrectedFeatures) {
+        msg(sprintf("Removed %d uncorrected features from the dataset.", features_removed_uncorrected))
+      } else {
+        msg(sprintf("Kept %d uncorrected features in the dataset.", length(uncorrected_features)))
+      }
+    } else {
+      msg("All features were successfully corrected by QCRSC.")
+    }
+  }
+
   # Add timestamp end
   listPreprocessed$ProcessingTimestampEnd <- Sys.time()
 
-  # Add warnings if any steps were skipped
+  # Add warnings if any steps were skipped (updated)
+  warnings_list <- character(0)
   if (!driftBatchCorrection) {
-    listPreprocessed$Warnings <- c(listPreprocessed$Warnings %||% character(0),
-                                   "Drift/batch correction was skipped")
+    warnings_list <- c(warnings_list, "Drift/batch correction was skipped")
+  }
+  if (length(uncorrected_features) > 0 && !removeUncorrectedFeatures) {
+    warnings_list <- c(warnings_list,
+                       paste("Dataset contains", length(uncorrected_features),
+                             "uncorrected features that were retained"))
+  }
+
+  if (length(warnings_list) > 0) {
+    listPreprocessed$Warnings <- warnings_list
   }
 
   return(listPreprocessed)
