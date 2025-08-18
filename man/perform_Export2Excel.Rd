@@ -152,3 +152,6 @@ perform_Export2Excel(
 \code{\link[openxlsx]{createWorkbook}}, \code{\link[openxlsx]{addWorksheet}},
 \code{\link[openxlsx]{writeData}}
 }
+\author{
+John Lennon L. Calorio
+}

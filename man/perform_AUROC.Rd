@@ -140,3 +140,6 @@ auroc_results <- perform_AUROC(
 \seealso{
 \code{\link[pROC]{roc}}, \code{\link[pROC]{auc}}, \code{\link[pROC]{ci}}
 }
+\author{
+John Lennon L. Calorio
+}

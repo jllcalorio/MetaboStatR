@@ -114,3 +114,6 @@ sig_features <- volcano_results$VolcanoData_filtered_Control_vs._Treatment1
 \code{\link{perform_PreprocessingPeakData}}, \code{\link{perform_FoldChange}},
 \code{\link{perform_ComparativeAnalysis}}
 }
+\author{
+John Lennon L. Calorio
+}

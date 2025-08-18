@@ -108,3 +108,6 @@ validation_summary <- result$validation_report
 \seealso{
 \code{\link{perform_PreprocessingPeakData}} for the next step in the analysis pipeline
 }
+\author{
+John Lennon L. Calorio
+}

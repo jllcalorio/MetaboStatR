@@ -88,3 +88,6 @@ print(plots$plot_combined)
 \seealso{
 \code{\link{perform_PreprocessingPeakData}}
 }
+\author{
+John Lennon L. Calorio
+}

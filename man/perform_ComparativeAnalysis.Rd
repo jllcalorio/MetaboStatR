@@ -122,5 +122,5 @@ results <- perform_ComparativeAnalysis(
 \code{\link[stats]{aov}}, \code{\link[ggstatsplot]{ggbetweenstats}}
 }
 \author{
-Your Name
+John Lennon L. Calorio
 }

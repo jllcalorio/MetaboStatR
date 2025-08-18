@@ -113,3 +113,6 @@ results <- perform_PLS(data, method = "splsda", ncomp = 3, keepX = c(10, 5, 5))
 }
 
 }
+\author{
+John Lennon L. Calorio
+}

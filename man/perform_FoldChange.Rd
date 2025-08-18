@@ -34,13 +34,13 @@ column. Default is \code{c("SQC", "EQC", "QC")}.}
 \item{min_samples_per_group}{Integer. Minimum number of samples required per group
 for analysis. Default is 2.}
 
-\item{epsilon}{Numeric. Small value added to prevent log(0) issues when data
-contains zeros or negative values. Default is 1e-8.}
+\item{epsilon}{Numeric. Small value added to prevent log2(0) issues when data
+contains zeros or negative values. Default is \code{1e-8}.}
 }
 \value{
 A list containing:
 \item{FunctionOrigin}{Character. Function name for traceability}
-\item{data_Min_is_1}{Data.frame. Adjusted data with minimum value shifted to 1}
+\item{data_shifted}{Data.frame. Adjusted data with minimum value shifted to 1}
 \item{group_summary}{Data.frame. Summary of groups and sample counts}
 \item{comparison_matrix}{Matrix. All pairwise comparisons performed}
 \item{data_combined_GROUP1 vs. GROUP2}{Data.frame. Fold change results for each comparison}
@@ -93,4 +93,7 @@ fc_results <- perform_FoldChange(
 }
 \seealso{
 \code{\link{perform_PreprocessingPeakData}}
+}
+\author{
+John Lennon L. Calorio
 }

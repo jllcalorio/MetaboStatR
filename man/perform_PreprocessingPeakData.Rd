@@ -55,25 +55,59 @@ perform_PreprocessingPeakData(
 
 \item{removeUncorrectedFeatures}{Boolean. If \code{TRUE} (default), removes features that were not corrected by QCRSC due to insufficient QC samples meeting the min_QC threshold.}
 
-\item{dataNormalize}{String. Data normalization method.}
+\item{dataNormalize}{String. Data normalization method. Options:
+\itemize{
+\item \code{"none"}: No normalization
+\item \code{"Normalization"}: Using the values from "Normalization" row
+\item \code{"sum"}: By sum
+\item \code{"median"}: By median
+\item \code{"PQN1"}: By median of reference spectrum
+\item \code{"PQN2"}: By reference sample supplied in \code{refSample}
+\item \code{"groupPQN"}: By group in \code{c("SQC", "EQC", "QC")}, if both (default) then all QCs are considered as QC
+\item \code{"quantile"}: By quantile
+}
+Default: "Normalization" (if present, otherwise, "sum")}
 
 \item{refSample}{String. Reference sample for \code{dataNormalize = "PQN2"}.}
 
 \item{groupSample}{String. Used only if \code{dataNormalize = "groupPQN"}.}
 
-\item{reference_method}{String. Method for computing reference from QC samples.}
+\item{reference_method}{String. Method for computing reference from QC samples in \code{dataNormalize = "quantile"}. Options:
+\itemize{
+\item \code{"mean"}: Default
+\item \code{"median"}
+}}
 
-\item{dataTransform}{String. Data transformation method applied after \code{dataNormalize}.}
+\item{dataTransform}{String. Data transformation method applied after \code{dataNormalize}. Options:
+\itemize{
+\item \code{"none"}: No transformation
+\item \code{"log2"}: log base 2
+\item \code{"log10"}: log base 10
+\item \code{"sqrt"}: Square-root
+\item \code{"cbrt"}: Cube-root
+\item \code{"vsn"}: Variance Stabilizing Normalization
+}}
 
-\item{dataScalePCA}{String. Data scaling for PCA analysis.}
+\item{dataScalePCA}{String. Data scaling for PCA analysis. Options:
+\itemize{
+\item \code{"none"}: No data scaling
+\item \code{"mean"}: Scale by mean (average)
+\item \code{"meanSD"}: Scale by mean divided by standard deviation (SD)
+\item \code{"mean2SD"}: Pareto-scaling. Scale by mean divided by square-root of SD. Always use this for PLS-type analysis.
+}}
 
-\item{dataScalePLS}{String. Data scaling for PLS analysis.}
+\item{dataScalePLS}{String. Data scaling for PLS analysis. Same options as \code{dataScalePCA}.}
 
 \item{filterMaxRSD}{Numeric. Threshold for RSD filtering.}
 
-\item{filterMaxRSD_by}{String. Which QC samples to use for RSD filtering.}
+\item{filterMaxRSD_by}{String. Which QC samples to use for RSD filtering. Options:
+\itemize{
+\item \code{"SQC"}: Filter by sample QC
+\item \code{"EQC"}: Filter by extract QC (default)
+\item \code{"both"}: Filter by by both SQC and EQC (or QC altogether)
+}}
 
-\item{filterMaxVarSD}{Numeric. Remove nth percentile of features with lowest variability.}
+\item{filterMaxVarSD}{Numeric. Remove \verb{nth percentile} of features with lowest variability.}
 
 \item{verbose}{Logical. Whether to print detailed progress messages. Default TRUE.}
 }
@@ -85,4 +119,10 @@ Performs a complete data preprocessing workflow to prepare raw data for
 downstream analysis. This function applies preprocessing steps sequentially
 in the order specified by the parameters to ensure optimal data quality
 and analytical readiness.
+}
+\seealso{
+\code{\link{perform_DataQualityCheck}} for the data quality check
+}
+\author{
+John Lennon L. Calorio
 }

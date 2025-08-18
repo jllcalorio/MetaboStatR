@@ -103,3 +103,6 @@ scree <- multi_plots$scree_plot  # Scree plot
 display_AllPlots(multi_plots, include_scree = TRUE)
 }
 }
+\author{
+John Lennon L. Calorio
+}

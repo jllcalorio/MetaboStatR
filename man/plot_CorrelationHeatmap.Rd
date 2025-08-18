@@ -150,3 +150,6 @@ result <- plot_CorrelationHeatmap(
 \seealso{
 \code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}}
 }
+\author{
+John Lennon L. Calorio
+}

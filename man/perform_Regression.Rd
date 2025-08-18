@@ -136,3 +136,6 @@ print(regression_results$ElasticNet_Results$ConfusionMatrix$table)
 \seealso{
 \code{\link[glmnet]{cv.glmnet}}, \code{\link[caret]{confusionMatrix}}
 }
+\author{
+John Lennon L. Calorio
+}
