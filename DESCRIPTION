@@ -7,24 +7,28 @@ Description: Perform Data Preprocessing, Bioinformatics and Statistical Data Ana
 License: MIT + file LICENSE
 Imports: 
     caret,
+    digest,
     dplyr,
     ggplot2,
     glmnet,
     gridExtra,
     Hmisc,
+    htmlwidgets,
     magrittr,
     mixOmics,
     patchwork,
     pheatmap,
+    plotly,
     pROC,
     purrr,
     RColorBrewer,
     readxl,
     ropls,
     stringr,
+    svglite,
     tibble,
     tidyr,
-    vsn
+    webshot2
 Suggests:
     BiocManager,
     ggstatsplot,
@@ -35,7 +39,9 @@ Suggests:
     rmarkdown,
     rstudioapi,
     testthat (>= 3.0.0),
-    tools
+    tibble,
+    tools,
+    vsn
 Depends:
     R (>= 4.4.0)
 biocViews:
