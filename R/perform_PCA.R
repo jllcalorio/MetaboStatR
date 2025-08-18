@@ -46,7 +46,10 @@
 #'   }
 #' @export
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @importFrom stats complete.cases
+#' @importFrom utils getFromNamespace
 #'
 #' @examples
 #' \dontrun{

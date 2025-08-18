@@ -73,6 +73,8 @@
 #' results <- perform_PLS(data, method = "splsda", ncomp = 3, keepX = c(10, 5, 5))
 #' }
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @import ggplot2
 #' @import dplyr
 #' @import tibble
@@ -373,7 +375,8 @@ perform_pls_analysis <- function(data, pls_data, non_qc_indices, group_combinati
         ropls::opls(x = data_pair, y = y_pair, predI = predI, orthoI = orthoI,
                     algoC = "nipals", crossvalI = crossvalI, log10L = FALSE,
                     permI = permI, scaleC = scaleC, subset = NULL,
-                    plotSubC = paste0(group1, " vs ", group2))
+                    plotSubC = paste0(group1, " vs ", group2),
+                    fig.pdfC = "interactive")
 
       } else if (method == "plsda") {
         ropls::opls(x = data_pair, y = y_pair, predI = predI, orthoI = 0,

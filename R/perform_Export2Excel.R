@@ -119,6 +119,8 @@
 #' )
 #' }
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @seealso
 #' \code{\link[openxlsx]{createWorkbook}}, \code{\link[openxlsx]{addWorksheet}},
 #' \code{\link[openxlsx]{writeData}}

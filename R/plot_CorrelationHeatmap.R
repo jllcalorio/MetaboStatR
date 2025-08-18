@@ -113,11 +113,14 @@
 #' @seealso
 #' \code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}}
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @importFrom stats IQR cor
 #' @importFrom Hmisc rcorr
 #' @importFrom pheatmap pheatmap
 #' @importFrom grDevices colorRampPalette
 #' @importFrom grid grid.newpage
+#'
 #' @export
 plot_CorrelationHeatmap <- function(
     data,

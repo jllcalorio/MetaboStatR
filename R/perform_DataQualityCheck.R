@@ -80,6 +80,8 @@
 #' validation_summary <- result$validation_report
 #' }
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @seealso
 #' \code{\link{perform_PreprocessingPeakData}} for the next step in the analysis pipeline
 #'

@@ -87,6 +87,8 @@
 #' \code{\link{perform_PreprocessingPeakData}}, \code{\link{perform_FoldChange}},
 #' \code{\link{perform_ComparativeAnalysis}}
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @import ggplot2
 #' @import dplyr
 #' @importFrom utils combn
@@ -408,6 +410,8 @@ plot_Volcano <- function(PPData,
   n_up <- sum(data$Significance == "Upregulated")
   n_down <- sum(data$Significance == "Downregulated")
   n_total <- nrow(data)
+  fc_max <- max(data$Fold_Change) # max(data[sapply(data$Fold_Change, is.numeric)], na.rm = TRUE)
+  fc_min <- min(data$Fold_Change) # min(data[sapply(data$Fold_Change, is.numeric)], na.rm = TRUE)
 
   # Create the plot
   p <- ggplot2::ggplot(data, ggplot2::aes(x = .data$Log2_Fold_Change, y = .data$Neg_Log10_Adj_P)) +
@@ -437,8 +441,10 @@ plot_Volcano <- function(PPData,
     ggplot2::labs(
       title = sprintf("Volcano Plot: %s", group_name),
       subtitle = sprintf(
-        "Features: %d total | %d upregulated | %d downregulated\nThresholds: |log2FC| >= %.2f, adj. p-value < %.3f",
-        n_total, n_up, n_down, log2(fcUP), adjpvalue
+        # "Features: %d total | %d upregulated | %d downregulated\nThresholds: |log2FC| >= %.2f, adj. p-value < %.3f",
+        # n_total, n_up, n_down, log2(fcUP), adjpvalue
+        "Features: %d total | %d upregulated | %d downregulated | Min FC = %.2f | Max FC = %.2f \nThresholds: %.2f <= log2FC <= %.2f, adj. p-value < %.3f",
+        n_total, n_up, n_down, fc_min, fc_max, log2(fcUP), log2(fcDown), adjpvalue
       ),
       x = "Log2 Fold Change",
       y = "-Log10 (Adjusted P-value)",

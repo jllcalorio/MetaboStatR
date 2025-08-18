@@ -92,7 +92,8 @@
 #' )
 #' }
 #'
-#' @author Your Name
+#' @author John Lennon L. Calorio
+#'
 #' @seealso \code{\link{perform_PreprocessingPeakData}}, \code{\link[stats]{t.test}},
 #'   \code{\link[stats]{aov}}, \code{\link[ggstatsplot]{ggbetweenstats}}
 #'

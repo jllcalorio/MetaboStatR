@@ -9,6 +9,7 @@ NULL
 #'
 globalVariables(c(
   ".", "Feature", "VIP", "fold_change", "adj. p-value",
+  "p_value", "adj_p_value",
   "AUROC", "AUC", "Label", "PC1", "PC2", "Batch", "Group",
   "Groups", "Injection", "Sample", "Value", "Abundance",
   "Covariance", "Correlation", "before", "after", "correction",

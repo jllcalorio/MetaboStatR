@@ -71,6 +71,9 @@
 #' @importFrom tibble rownames_to_column
 #' @importFrom gridExtra grid.arrange
 #' @importFrom stats setNames
+#'
+#' @author John Lennon L. Calorio
+#'
 #' @seealso \code{\link{perform_PreprocessingPeakData}}
 
 plot_BeforeAfter <- function(data,

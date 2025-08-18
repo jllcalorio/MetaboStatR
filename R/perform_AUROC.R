@@ -74,6 +74,8 @@
 #'   \item Optionally creates individual plots for specified metabolites
 #' }
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @examples
 #' \dontrun{
 #' # Basic usage
@@ -177,6 +179,7 @@ perform_AUROC <- function(
   for (group_pair in group_combinations) {
 
     tryCatch({
+      # Note: In "arrangeLevels" parameter, the input should be c(Control, Case1, Case2, ...) as required by AUROC
       # Set up group comparison (reverse for ROC: control vs case)
       group1 <- group_pair[2]  # case (the 2nd item in the pair)
       group2 <- group_pair[1]  # control (the 1st item in the pair)
@@ -537,11 +540,11 @@ perform_AUROC <- function(
     tryCatch({
       # Determine direction for ROC
       roc_direction <- direction
-      if (direction == "auto") {
-        median_group1 <- median(feature_data[[feature_name]][feature_data$Groups == group1], na.rm = TRUE)
-        median_group2 <- median(feature_data[[feature_name]][feature_data$Groups == group2], na.rm = TRUE)
-        roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
-      }
+      # if (direction == "auto") {
+      #   median_group1 <- median(feature_data[[feature_name]][feature_data$Groups == group1], na.rm = TRUE)
+      #   median_group2 <- median(feature_data[[feature_name]][feature_data$Groups == group2], na.rm = TRUE)
+      #   roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
+      # }
 
       # Compute ROC curve
       roc_obj <- pROC::roc(
@@ -629,8 +632,8 @@ perform_AUROC <- function(
 
     # Create ROC data frame
     roc_df <- data.frame(
-      x = 1 - roc_obj$specificities,
-      y = roc_obj$sensitivities,
+      x = roc_obj$sensitivities,
+      y = 1 - roc_obj$specificities,
       Feature = sprintf("%s (AUC = %.3f) (95%% CI: %.3f-%.3f)",
                         feature, auc_val, ci_low, ci_up)
     ) %>%
@@ -664,8 +667,8 @@ perform_AUROC <- function(
     ) +
     ggplot2::labs(
       title = sprintf("Top %d Features' ROC Curves - %s", min(top_n, nrow(top_features)), group_name),
-      x = "1 - Specificity",
-      y = "Sensitivity",
+      x = "Sensitivity",
+      y = "1 - Specificity",
       color = "Feature (AUC, 95% CI)"
     ) +
     ggplot2::theme_minimal() +
@@ -734,8 +737,8 @@ perform_AUROC <- function(
 
         # Create plot data
         roc_df <- data.frame(
-          x = 1 - roc_obj$specificities,
-          y = roc_obj$sensitivities,
+          x = roc_obj$sensitivities,
+          y = 1 - roc_obj$specificities,
           Label = sprintf("%s (AUC = %.3f, 95%% CI: %.3f-%.3f)",
                           metabolite, auc_val, ci_vals[1], ci_vals[3])
         ) %>%
@@ -750,8 +753,8 @@ perform_AUROC <- function(
           ) +
           ggplot2::labs(
             title = sprintf("ROC Curve - %s", group_name),
-            x = "1 - Specificity",
-            y = "Sensitivity",
+            x = "Sensitivity",
+            y = "1 - Specificity",
             color = "Metabolite (AUC, 95% CI)"
           ) +
           ggplot2::theme_minimal() +
@@ -821,62 +824,62 @@ get_auroc_summary <- function(auroc_results) {
   return(summary_stats)
 }
 
-#' Export AUROC results to file
-#'
-#' @description Export AUROC analysis results to CSV files
-#' @param auroc_results List returned by perform_AUROC
-#' @param output_dir Character. Directory to save results
-#' @param file_prefix Character. Prefix for output files
-#' @return Invisible NULL
-#' @export
-export_auroc_results <- function(auroc_results, output_dir = ".", file_prefix = "AUROC") {
-
-  if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
-    stop("Input must be results from perform_AUROC function")
-  }
-
-  # Create output directory if it doesn't exist
-  if (!dir.exists(output_dir)) {
-    dir.create(output_dir, recursive = TRUE)
-  }
-
-  # Export summary
-  summary_stats <- get_auroc_summary(auroc_results)
-  if (nrow(summary_stats) > 0) {
-    utils::write.csv(summary_stats,
-                     file.path(output_dir, paste0(file_prefix, "_summary.csv")),
-                     row.names = FALSE)
-  }
-
-  # Export individual comparison results
-  result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
-
-  for (name in result_names) {
-    comparison <- gsub("^data_results_", "", name)
-    safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
-    filename <- paste0(file_prefix, "_", safe_comparison, ".csv")
-
-    utils::write.csv(auroc_results[[name]],
-                     file.path(output_dir, filename),
-                     row.names = FALSE)
-  }
-
-  # Export merged data
-  merged_names <- names(auroc_results)[grepl("^data_Merged_", names(auroc_results))]
-
-  for (name in merged_names) {
-    comparison <- gsub("^data_Merged_", "", name)
-    safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
-    filename <- paste0(file_prefix, "_merged_", safe_comparison, ".csv")
-
-    utils::write.csv(auroc_results[[name]],
-                     file.path(output_dir, filename),
-                     row.names = FALSE)
-  }
-
-  message("AUROC results exported to: ", output_dir)
-  invisible(NULL)
-}
+# #' Export AUROC results to file
+# #'
+# #' @description Export AUROC analysis results to CSV files
+# #' @param auroc_results List returned by perform_AUROC
+# #' @param output_dir Character. Directory to save results
+# #' @param file_prefix Character. Prefix for output files
+# #' @return Invisible NULL
+# #' @export
+# export_auroc_results <- function(auroc_results, output_dir = ".", file_prefix = "AUROC") {
+#
+#   if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
+#     stop("Input must be results from perform_AUROC function")
+#   }
+#
+#   # Create output directory if it doesn't exist
+#   if (!dir.exists(output_dir)) {
+#     dir.create(output_dir, recursive = TRUE)
+#   }
+#
+#   # Export summary
+#   summary_stats <- get_auroc_summary(auroc_results)
+#   if (nrow(summary_stats) > 0) {
+#     utils::write.csv(summary_stats,
+#                      file.path(output_dir, paste0(file_prefix, "_summary.csv")),
+#                      row.names = FALSE)
+#   }
+#
+#   # Export individual comparison results
+#   result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
+#
+#   for (name in result_names) {
+#     comparison <- gsub("^data_results_", "", name)
+#     safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
+#     filename <- paste0(file_prefix, "_", safe_comparison, ".csv")
+#
+#     utils::write.csv(auroc_results[[name]],
+#                      file.path(output_dir, filename),
+#                      row.names = FALSE)
+#   }
+#
+#   # Export merged data
+#   merged_names <- names(auroc_results)[grepl("^data_Merged_", names(auroc_results))]
+#
+#   for (name in merged_names) {
+#     comparison <- gsub("^data_Merged_", "", name)
+#     safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
+#     filename <- paste0(file_prefix, "_merged_", safe_comparison, ".csv")
+#
+#     utils::write.csv(auroc_results[[name]],
+#                      file.path(output_dir, filename),
+#                      row.names = FALSE)
+#   }
+#
+#   message("AUROC results exported to: ", output_dir)
+#   invisible(NULL)
+# }
 
 #' Plot AUROC distribution
 #'

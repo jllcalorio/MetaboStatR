@@ -18,19 +18,57 @@
 #' @param log_scale Boolean. If `TRUE` (default), performs signal correction fit on log-scaled data.
 #' @param min_QC Numeric. Minimum number of QC samples required for signal correction per batch.
 #' @param removeUncorrectedFeatures Boolean. If `TRUE` (default), removes features that were not corrected by QCRSC due to insufficient QC samples meeting the min_QC threshold.
-#' @param dataNormalize String. Data normalization method.
+#' @param dataNormalize String. Data normalization method. Options:
+#'  \itemize{
+#'    \item \code{"none"}: No normalization
+#'    \item \code{"Normalization"}: Using the values from "Normalization" row
+#'    \item \code{"sum"}: By sum
+#'    \item \code{"median"}: By median
+#'    \item \code{"PQN1"}: By median of reference spectrum
+#'    \item \code{"PQN2"}: By reference sample supplied in `refSample`
+#'    \item \code{"groupPQN"}: By group in `c("SQC", "EQC", "QC")`, if both (default) then all QCs are considered as QC
+#'    \item \code{"quantile"}: By quantile
+#'    }
+#'    Default: "Normalization" (if present, otherwise, "sum")
 #' @param refSample String. Reference sample for `dataNormalize = "PQN2"`.
 #' @param groupSample String. Used only if `dataNormalize = "groupPQN"`.
-#' @param reference_method String. Method for computing reference from QC samples.
-#' @param dataTransform String. Data transformation method applied after `dataNormalize`.
-#' @param dataScalePCA String. Data scaling for PCA analysis.
-#' @param dataScalePLS String. Data scaling for PLS analysis.
+#' @param reference_method String. Method for computing reference from QC samples in `dataNormalize = "quantile"`. Options:
+#'  \itemize{
+#'    \item \code{"mean"}: Default
+#'    \item \code{"median"}
+#'  }
+#' @param dataTransform String. Data transformation method applied after `dataNormalize`. Options:
+#'  \itemize{
+#'    \item \code{"none"}: No transformation
+#'    \item \code{"log2"}: log base 2
+#'    \item \code{"log10"}: log base 10
+#'    \item \code{"sqrt"}: Square-root
+#'    \item \code{"cbrt"}: Cube-root
+#'    \item \code{"vsn"}: Variance Stabilizing Normalization
+#'    }
+#' @param dataScalePCA String. Data scaling for PCA analysis. Options:
+#'  \itemize{
+#'    \item \code{"none"}: No data scaling
+#'    \item \code{"mean"}: Scale by mean (average)
+#'    \item \code{"meanSD"}: Scale by mean divided by standard deviation (SD)
+#'    \item \code{"mean2SD"}: Pareto-scaling. Scale by mean divided by square-root of SD. Always use this for PLS-type analysis.
+#'    }
+#' @param dataScalePLS String. Data scaling for PLS analysis. Same options as `dataScalePCA`.
 #' @param filterMaxRSD Numeric. Threshold for RSD filtering.
-#' @param filterMaxRSD_by String. Which QC samples to use for RSD filtering.
-#' @param filterMaxVarSD Numeric. Remove nth percentile of features with lowest variability.
+#' @param filterMaxRSD_by String. Which QC samples to use for RSD filtering. Options:
+#'  \itemize{
+#'    \item \code{"SQC"}: Filter by sample QC
+#'    \item \code{"EQC"}: Filter by extract QC (default)
+#'    \item \code{"both"}: Filter by by both SQC and EQC (or QC altogether)
+#'    }
+#' @param filterMaxVarSD Numeric. Remove `nth percentile` of features with lowest variability.
 #' @param verbose Logical. Whether to print detailed progress messages. Default TRUE.
 #'
 #' @returns A list containing results from all preprocessing steps.
+#'
+#' @author John Lennon L. Calorio
+#'
+#' @seealso \code{\link{perform_DataQualityCheck}} for the data quality check
 #'
 #' @importFrom stats quantile
 #'
@@ -759,7 +797,7 @@ perform_PreprocessingPeakData <- function(
              tryCatch({
                data_matrix <- as.matrix(data)
                vsn_fit <- vsn::vsn2(data_matrix)
-               result <- predict(vsn_fit, newdata = data_matrix)
+               result <- vsn::predict(vsn_fit, newdata = data_matrix) # Added "vsn::" to specify "predict" function origin
                msg("Applied VSN transformation.")
                return(as.data.frame(result))
              }, error = function(e) {

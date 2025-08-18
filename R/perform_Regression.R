@@ -69,6 +69,8 @@
 #'   \item{\code{ReferenceLevel}}: Reference level for classification
 #' }
 #'
+#' @author John Lennon L. Calorio
+#'
 #' @examples
 #' \dontrun{
 #' # Load required libraries

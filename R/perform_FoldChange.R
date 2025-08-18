@@ -20,12 +20,12 @@
 #'   column. Default is `c("SQC", "EQC", "QC")`.
 #' @param min_samples_per_group Integer. Minimum number of samples required per group
 #'   for analysis. Default is 2.
-#' @param epsilon Numeric. Small value added to prevent log(0) issues when data
-#'   contains zeros or negative values. Default is 1e-8.
+#' @param epsilon Numeric. Small value added to prevent log2(0) issues when data
+#'   contains zeros or negative values. Default is `1e-8`.
 #'
 #' @return A list containing:
 #'   \item{FunctionOrigin}{Character. Function name for traceability}
-#'   \item{data_Min_is_1}{Data.frame. Adjusted data with minimum value shifted to 1}
+#'   \item{data_shifted}{Data.frame. Adjusted data with minimum value shifted to 1}
 #'   \item{group_summary}{Data.frame. Summary of groups and sample counts}
 #'   \item{comparison_matrix}{Matrix. All pairwise comparisons performed}
 #'   \item{data_combined_GROUP1 vs. GROUP2}{Data.frame. Fold change results for each comparison}
@@ -63,6 +63,8 @@
 #'   qc_patterns = c("QC", "Blank", "POOL")
 #' )
 #' }
+#'
+#' @author John Lennon L. Calorio
 #'
 #' @seealso \code{\link{perform_PreprocessingPeakData}}
 #'
@@ -110,7 +112,7 @@ perform_FoldChange <- function(
 
   # Handle zero/negative values
   df_adjusted <- .handle_zero_negative_values(df_filtered, epsilon)
-  fc_results$data_Min_is_1 <- as.data.frame(df_adjusted)
+  fc_results$data_shifted <- as.data.frame(df_adjusted)
 
   # Add group summary to results
   fc_results$group_summary <- .create_group_summary(groups_factor, qc_filter_result)
