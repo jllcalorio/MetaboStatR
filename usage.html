@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaboStatR: Usage Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+        }
+        h1, h2, h3 {
+            color: #333;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
+</head>
+<body>
+    <h1>MetaboStatR: Usage Guide</h1>
+    <p>This guide provides a step-by-step tutorial on how to use the <code>MetaboStatR</code> package for metabolomics data analysis.</p>
+
+    <h2>Data Format</h2>
+    <p>Before you begin, make sure your data is in the correct format. The package expects a file (like a CSV or Excel file) where:</p>
+    <ul>
+        <li>Each row is a sample.</li>
+        <li>Each column is a metabolite.</li>
+        <li>The first column contains the sample names.</li>
+        <li>Group and batch information are in columns towards the end of the file.</li>
+    </ul>
+    <p>Here is an example of the expected data structure:</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Sample</th>
+                <th>Metabolite 1</th>
+                <th>Metabolite 2</th>
+                <th>...</th>
+                <th>Metabolite N</th>
+                <th>Group</th>
+                <th>Batch</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>Sample_1</td>
+                <td>123.45</td>
+                <td>678.90</td>
+                <td>...</td>
+                <td>543.21</td>
+                <td>Control</td>
+                <td>1</td>
+            </tr>
+            <tr>
+                <td>Sample_2</td>
+                <td>125.67</td>
+                <td>680.12</td>
+                <td>...</td>
+                <td>545.43</td>
+                <td>Treatment</td>
+                <td>1</td>
+            </tr>
+            <tr>
+                <td>Sample_3</td>
+                <td>121.23</td>
+                <td>675.67</td>
+                <td>...</td>
+                <td>541.89</td>
+                <td>Control</td>
+                <td>2</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Step-by-Step Workflow</h2>
+
+    <h3>1. Load Packages and Data</h3>
+    <p>First, load the necessary packages and your data file. You can use the <code>readr</code> package for CSV files or <code>readxl</code> for Excel files.</p>
+    <pre><code>
+# Load MetaboStatR and other useful packages
+library(MetaboStatR)
+library(readr)
+
+# Load your data
+# Make sure to replace "path/to/your/data.csv" with the actual file path
+raw_data <- read_csv("path/to/your/data.csv")
+    </code></pre>
+
+    <h3>2. Data Preprocessing</h3>
+    <p>The <code>perform_PreprocessingPeakData</code> function is the first major step. It handles missing value imputation, filtering, normalization, and scaling.</p>
+    <pre><code>
+preprocessed_data <- perform_PreprocessingPeakData(
+  raw_data             = raw_data,
+  filterMissing        = 20,      # Remove features with more than 20% missing values in any group
+  denMissing           = 5,       # Impute missing values with 1/5th of the minimum value in the row
+  driftBatchCorrection = TRUE,   # Correct for batch effects
+  filterMaxRSD         = 30,      # Remove features with RSD > 30% in QC samples
+  filterMaxRSD_by      = "SQC",   # Use SQC samples to calculate RSD
+  normalize            = TRUE,    # Normalize the data
+  log10transform       = TRUE,    # Apply log10 transformation
+  scalePCA             = "meanSD",# Scale data for PCA (mean-center and divide by standard deviation)
+  scaleOPLSDA          = "meanSD2" # Scale data for OPLS-DA (mean-center and divide by sqrt of SD)
+)
+    </code></pre>
+
+    <h3>3. Visualize Preprocessing Effects</h3>
+    <p>You can see how the data changed before and after preprocessing using the <code>plot_BeforeAfter</code> function.</p>
+    <pre><code>
+before_after_plots <- plot_BeforeAfter(
+  data     = preprocessed_data,
+  scaled   = "PCA",      # Use the PCA-scaled data for visualization
+  group_by = "Sample"
+)
+
+# Display the plots
+before_after_plots$plot_4in1
+    </code></pre>
+
+    <h3>4. Principal Component Analysis (PCA)</h3>
+    <p>Perform PCA to get an overview of the data structure and identify outliers.</p>
+    <pre><code>
+pca_results <- perform_PCA(
+  data          = preprocessed_data,
+  scorePC       = list(c(1,2), c(1,3)), # Create plots for PC1 vs PC2 and PC1 vs PC3
+  includeQC     = FALSE,               # Exclude QC samples from the plot
+  scoresEllipse = TRUE                 # Draw ellipses around the groups
+)
+
+# Display the PCA plots
+display_AllPlots(pca_results)
+    </code></pre>
+
+    <h3>5. Partial Least Squares Discriminant Analysis (PLS-DA)</h3>
+    <p>Use PLS-DA to find which metabolites best separate the groups.</p>
+    <pre><code>
+plsda_results <- perform_PLS(
+  data             = preprocessed_data,
+  method           = "PLS-DA", # Can also be "PLS" or "sPLS-DA"
+  includeQC        = FALSE,
+  arrangeLevels    = c("Control", "Treatment"), # Define the order of groups
+  scoresEllipse    = TRUE
+)
+
+# Display the PLS-DA plots
+# (Assuming the object has a similar display function or can be plotted directly)
+# You might need to access plots from the returned list, e.g., plsda_results$plots
+    </code></pre>
+
+    <h3>6. Fold Change Analysis</h3>
+    <p>Calculate the fold change of metabolites between groups.</p>
+    <pre><code>
+fold_change_results <- perform_FoldChange(
+  data          = preprocessed_data,
+  arrangeLevels = c("Control", "Treatment"),
+  sortFC        = TRUE # Sort the results by fold change
+)
+    </code></pre>
+
+    <h3>7. Comparative Analysis (T-test/ANOVA)</h3>
+    <p>Perform statistical tests to find significantly different metabolites.</p>
+    <pre><code>
+comparative_results <- perform_ComparativeAnalysis(
+  data   = preprocessed_data,
+  sort_p = TRUE,   # Sort results by p-value
+  paired = FALSE  # Use unpaired tests
+)
+    </code></pre>
+
+    <h3>8. Volcano Plot</h3>
+    <p>Visualize the results of fold change and statistical analysis with a volcano plot.</p>
+    <pre><code>
+volcano_plot <- plot_Volcano(
+  PPData = preprocessed_data,
+  FCData = fold_change_results,
+  CAData = comparative_results,
+  arrangeLevels = c("Control", "Treatment"),
+  fcUP          = 1.5,  # Fold change threshold for "up-regulated"
+  fcDown        = 0.8,  # Fold change threshold for "down-regulated"
+  adjpvalue     = 0.05  # Adjusted p-value threshold
+)
+
+# Display the volcano plot (might be a list of plots if multiple comparisons)
+# e.g., volcano_plot$plots[[1]]
+    </code></pre>
+
+    <h3>9. AUROC Analysis</h3>
+    <p>Perform AUROC analysis to evaluate the predictive performance of metabolites.</p>
+    <pre><code>
+auroc_results <- perform_AUROC(
+    data_PP = preprocessed_data,
+    data_DR = plsda_results,
+    data_CA = comparative_results,
+    data_FC = fold_change_results,
+    arrangeLevels = c("Control", "Treatment"),
+    VIPmin = 1,
+    fcUP = 1.5,
+    fcDown = 0.8,
+    adjpvalue = 0.05,
+    top_n = 5
+)
+    </code></pre>
+
+    <h3>10. Regression Analysis</h3>
+    <p>Perform regression analysis to build predictive models.</p>
+    <pre><code>
+regression_results <- perform_Regression(
+    preprocessed_data,
+    method = c("lasso", "enet"),
+    train_percent = 80,
+    ref = "Control",
+    lambda = "1se"
+)
+    </code></pre>
+
+    <h3>11. Export Results</h3>
+    <p>Finally, save your results to Excel files.</p>
+    <pre><code>
+perform_Export2Excel(
+  results     = preprocessed_data,
+  folder_name = "MyAnalysis",
+  file_name   = "Preprocessing_Results"
+)
+
+perform_Export2Excel(
+  results     = pca_results,
+  folder_name = "MyAnalysis",
+  file_name   = "PCA_Results"
+)
+
+# ... and so on for other results ...
+    </code></pre>
+
+    <h2>Full Example Script</h2>
+    <p>Here is a full script that you can adapt for your own analysis. Remember to change the file paths and parameters to match your data.</p>
+    <pre><code>
+# 1. Load Packages and Data
+library(MetaboStatR)
+library(readr)
+raw_data <- read_csv("path/to/your/data.csv")
+
+# 2. Data Preprocessing
+preprocessed_data <- perform_PreprocessingPeakData(
+  raw_data = raw_data, filterMissing = 20, denMissing = 5,
+  driftBatchCorrection = TRUE, filterMaxRSD = 30, filterMaxRSD_by = "SQC",
+  normalize = TRUE, log10transform = TRUE, scalePCA = "meanSD", scaleOPLSDA = "meanSD2"
+)
+
+# 3. Visualize Preprocessing
+plot_BeforeAfter(data = preprocessed_data, scaled = "PCA", group_by = "Sample")$plot_4in1
+
+# 4. PCA
+pca_results <- perform_PCA(data = preprocessed_data, scorePC = list(c(1,2)), includeQC = FALSE)
+display_AllPlots(pca_results)
+
+# 5. PLS-DA
+plsda_results <- perform_PLS(data = preprocessed_data, arrangeLevels = c("Control", "Treatment"))
+
+# 6. Fold Change
+fold_change_results <- perform_FoldChange(data = preprocessed_data, arrangeLevels = c("Control", "Treatment"))
+
+# 7. Comparative Analysis
+comparative_results <- perform_ComparativeAnalysis(data = preprocessed_data)
+
+# 8. Volcano Plot
+volcano_plot <- plot_Volcano(
+  PPData = preprocessed_data, FCData = fold_change_results, CAData = comparative_results,
+  arrangeLevels = c("Control", "Treatment")
+)
+
+# 9. AUROC Analysis
+auroc_results <- perform_AUROC(
+    data_PP = preprocessed_data, data_DR = plsda_results, data_CA = comparative_results,
+    data_FC = fold_change_results, arrangeLevels = c("Control", "Treatment")
+)
+
+# 10. Regression Analysis
+regression_results <- perform_Regression(preprocessed_data, ref = "Control")
+
+# 11. Export Results
+perform_Export2Excel(preprocessed_data, "MyAnalysis", "Preprocessing")
+perform_Export2Excel(pca_results, "MyAnalysis", "PCA")
+perform_Export2Excel(plsda_results, "MyAnalysis", "PLSDA")
+# ... etc.
+    </code></pre>
+
+</body>
+</html>

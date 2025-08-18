@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MetaboStatR: Installation Guide</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 20px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</head>
+<body>
+    <h1>MetaboStatR: Installation Guide</h1>
+    <p>This guide will walk you through the steps to install the <code>MetaboStatR</code> package and its dependencies.</p>
+
+    <h2>System Requirements</h2>
+    <ul>
+        <li>R version 4.4.0 or higher.</li>
+        <li>RStudio Desktop (recommended).</li>
+    </ul>
+
+    <h2>Installation Steps</h2>
+    <ol>
+        <li>
+            <h3>Install R and RStudio</h3>
+            <p>If you don't have R and RStudio installed, you can download them from the following links:</p>
+            <ul>
+                <li><a href="https://cran.r-project.org/" target="_blank">Download R</a></li>
+                <li><a href="https://www.rstudio.com/products/rstudio/download/" target="_blank">Download RStudio Desktop</a></li>
+            </ul>
+        </li>
+        <li>
+            <h3>Install the `devtools` package</h3>
+            <p>The <code>devtools</code> package is required to install <code>MetaboStatR</code> from its source. Open R or RStudio and run the following command in the console:</p>
+            <pre><code>install.packages("devtools")</code></pre>
+        </li>
+        <li>
+            <h3>Install MetaboStatR</h3>
+            <p>Since you have the source code for <code>MetaboStatR</code>, you can install it using the <code>devtools</code> package. Make sure your R session's working directory is set to the folder containing the <code>MetaboStatR</code> source code (the folder with the `DESCRIPTION` file).</p>
+            <p>Run the following command in the R console:</p>
+            <pre><code>devtools::install()</code></pre>
+            <p>Alternatively, if this was on GitHub, you would use a command like this, replacing `user/repository` with the actual path:</p>
+            <pre><code># devtools::install_github("user/repository")</code></pre>
+        </li>
+        <li>
+            <h3>Install Required Dependencies</h3>
+            <p><code>MetaboStatR</code> depends on several other R packages from both CRAN and Bioconductor. The following R script will install all the necessary packages.</p>
+            <p>You can run this script in your R console:</p>
+            <pre><code>
+# CRAN Packages
+cran_packages <- c(
+    "caret", "digest", "dplyr", "ggplot2", "glmnet", "gridExtra", "Hmisc",
+    "htmlwidgets", "magrittr", "mixOmics", "patchwork", "pheatmap", "plotly",
+    "pROC", "purrr", "RColorBrewer", "readxl", "stringr", "svglite",
+    "tibble", "tidyr", "webshot2", "ggstatsplot", "grid", "knitr", "openxlsx",
+    "rmarkdown", "rstudioapi", "testthat", "tools"
+)
+
+# Bioconductor Packages
+bioc_packages <- c("pmp", "ropls", "vsn", "BiocManager")
+
+# Install CRAN packages if not already installed
+for (pkg in cran_packages) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+        install.packages(pkg)
+    }
+}
+
+# Install Bioconductor packages if not already installed
+for (pkg in bioc_packages) {
+    if (!requireNamespace(pkg, quietly = TRUE)) {
+        if (!requireNamespace("BiocManager", quietly = TRUE)) {
+            install.packages("BiocManager")
+        }
+        BiocManager::install(pkg)
+    }
+}
+
+cat("\nAll dependencies have been checked and installed if missing.\n")
+            </code></pre>
+        </li>
+    </ol>
+    <p>Once all these steps are complete, you are ready to use the <code>MetaboStatR</code> package!</p>
+</body>
+</html>
