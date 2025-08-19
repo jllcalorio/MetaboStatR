@@ -1,0 +1,7 @@
+pandoc: '3.4'
+pkgdown: 2.1.3
+pkgdown_sha: ~
+articles:
+  introduction: introduction.html
+  metabolomics-workflow: metabolomics-workflow.html
+last_built: 2025-08-19T06:02Z
