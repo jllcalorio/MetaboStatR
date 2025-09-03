@@ -4,15 +4,16 @@
 #' Performs a complete data preprocessing workflow to prepare raw data for
 #' downstream analysis. This function applies preprocessing steps sequentially
 #' in the order specified by the parameters to ensure optimal data quality
-#' and analytical readiness.
+#' and analytical readiness. This function also automatically merges
+#' technical replicates.
 #'
 #' @param raw_data List. Quality-checked data from the `perform_DataQualityCheck` function.
 #' @param outliers Vector. Biological samples and/or QC samples considered as outliers. Example format: `c('Sample1', 'Sample2', 'QC1', 'QC2', ...)`. Defaults to `NULL`.
-#' @param filterMissing Numeric. Minimum percentage of missing values across all groups required to remove a feature.
+#' @param filterMissing Numeric. Minimum percentage of missing values across all groups required to remove a feature. Set to `NULL` to skip this step.
 #' @param filterMissing_by_group Boolean. Determines whether `filterMissing` should assess group-specific missingness before feature removal.
 #' @param filterMissing_includeQC Boolean. If `FALSE` (default), QC samples are excluded when implementing `filterMissing`.
 #' @param denMissing Numeric. Denominator value used in the fraction `1/denMissing` to replace missing values.
-#' @param driftBatchCorrection Boolean. If `TRUE` (default), perform QC-RSC algorithm for signal drift and batch effect correction.
+#' @param driftBatchCorrection Boolean. If `TRUE` (default), perform Quality Control-Robust Spline Correction (QC-RSC) algorithm for signal drift and batch effect correction.
 #' @param spline_smooth_param Numeric. Spline smoothing parameter ranging from 0 to 1.
 #' @param spline_smooth_param_limit Vector. A vector of format `c(min, max)` for spline parameter limits.
 #' @param log_scale Boolean. If `TRUE` (default), performs signal correction fit on log-scaled data.
@@ -45,32 +46,44 @@
 #'    \item \code{"sqrt"}: Square-root
 #'    \item \code{"cbrt"}: Cube-root
 #'    \item \code{"vsn"}: Variance Stabilizing Normalization
+#'    \item \code{"glog"}: Variance stabilising generalised logarithm (glog) transformation (added August 24, 2025)
 #'    }
-#' @param dataScalePCA String. Data scaling for PCA analysis. Options:
+#' @param dataScalePCA String. Data scaling for PCA analysis. This scaled data will be used in all analysis except PLS-type analysis. Options:
 #'  \itemize{
 #'    \item \code{"none"}: No data scaling
 #'    \item \code{"mean"}: Scale by mean (average)
-#'    \item \code{"meanSD"}: Scale by mean divided by standard deviation (SD)
+#'    \item \code{"meanSD"}: Auto-scaling. Scale by mean divided by standard deviation (SD)
 #'    \item \code{"mean2SD"}: Pareto-scaling. Scale by mean divided by square-root of SD. Always use this for PLS-type analysis.
 #'    }
-#' @param dataScalePLS String. Data scaling for PLS analysis. Same options as `dataScalePCA`.
-#' @param filterMaxRSD Numeric. Threshold for RSD filtering.
+#' @param dataScalePLS String. Data scaling for PLS analysis only. Same options as `dataScalePCA`.
+#' @param filterMaxRSD Numeric. Threshold for Relative Standard Deviation (RSD) filtering. Set to `NULL` to skip this step.
 #' @param filterMaxRSD_by String. Which QC samples to use for RSD filtering. Options:
 #'  \itemize{
 #'    \item \code{"SQC"}: Filter by sample QC
 #'    \item \code{"EQC"}: Filter by extract QC (default)
-#'    \item \code{"both"}: Filter by by both SQC and EQC (or QC altogether)
+#'    \item \code{"both"}: Filter by by both SQC and EQC (or QC altogether). Use this when there are no SQC and EQC in the "Group" row.
 #'    }
-#' @param filterMaxVarSD Numeric. Remove `nth percentile` of features with lowest variability.
+#' @param filterMaxVarSD Numeric. Remove `nth percentile` of features with lowest variability. Set to `NULL` to skip this step.
 #' @param verbose Logical. Whether to print detailed progress messages. Default TRUE.
+#' @param auto_merge_replicates Logical. If `TRUE` (default), automatically merge technical replicates based on SubjectID and Replicate columns. Only applies when both columns contain meaningful values.
 #'
-#' @returns A list containing results from all preprocessing steps.
+#' @returns A list containing results from all preprocessing steps and a plot of six random features/metabolites before and after drift- and batch correction (if `TRUE`).
 #'
 #' @author John Lennon L. Calorio
 #'
-#' @seealso \code{\link{perform_DataQualityCheck}} for the data quality check
+#' @seealso \code{\link{perform_DataQualityCheck}} for the data quality check and \code{\link{plot_before_after_correction}} to plot before and after drift- and batch correction
 #'
 #' @importFrom stats quantile
+#'
+#' @references Kirwan, J.A., Broadhurst, D.I., Davidson, R.L. et al. Characterising and correcting batch variation in an automated direct infusion mass spectrometry (DIMS) metabolomics workflow. Anal Bioanal Chem 405, 5147–5157 (2013). <https://doi.org/10.1007/s00216-013-6856-7> (pmp::QCRSC)
+#' @references Parsons, H.M., Ludwig, C., Günther, U.L. et al. Improved classification accuracy in 1- and 2-dimensional NMR metabolomics data using the variance stabilising generalised logarithm transformation. BMC Bioinformatics 8, 234 (2007). <https://doi.org/10.1186/1471-2105-8-234> (pmp::glog_transformation)
+#' @references Frank Dieterle, Alfred Ross, Götz Schlotterbeck, and Hans Senn. Probabilistic Quotient Normalization as Robust Method to Account for Dilution of Complex Biological Mixtures. Application in 1H NMR Metabonomics. Analytical Chemistry 2006 78 (13), 4281-4290. DOI: 10.1021/ac051632c <https://pubs.acs.org/doi/10.1021/ac051632c> (pmp::pqn_normalisation)
+#' @references Jankevics A, Lloyd GR, Weber RJM (2025). pmp: Peak Matrix Processing and signal batch correction for metabolomics datasets. doi:10.18129/B9.bioc.pmp, R package version 1.20.0, <https://bioconductor.org/packages/pmp>. (pmp package)
+#' @references Broadhurst, D.I. (2025). QC:MXP Repeat Injection based Quality Control, Batch Correction, Exploration & Data Cleaning (Version 2.1) Zendono. <https://doi.org/10.5281/zenodo.16824822>. Retrieved from <https://github.com/broadhurstdavid/QC-MXP>.
+#' @references Variance stabilization applied to microarray data calibration and to the quantification of differential expression, Wolfgang Huber, Anja von Heydebreck, Holger Sueltmann, Annemarie Poustka, Martin Vingron; Bioinformatics (2002) 18 Suppl.1 S96-S104. <https://doi.org/10.1093/bioinformatics/18.suppl_1.s96> (vsn::vsn2)
+#' @references Huber W, von Heydebreck A, Sueltmann H, Poustka A, Vingron M. Parameter estimation for the calibration and variance stabilization of microarray data. Stat Appl Genet Mol Biol. 2003;2:Article3. doi: 10.2202/1544-6115.1008. Epub 2003 Apr 5. PMID: 16646781. <https://pubmed.ncbi.nlm.nih.gov/16646781/> (vsn::vsn2)
+#' @references L-BFGS-B: Fortran Subroutines for Large-Scale Bound Constrained Optimization, C. Zhu, R.H. Byrd, P. Lu and J. Nocedal, Technical Report, Northwestern University (1996). (vsn::vsn2)
+#' @references Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. <https://doi.org/10.1201/9781351074988> (for scale)
 #'
 #' @export
 
@@ -97,7 +110,8 @@ perform_PreprocessingPeakData <- function(
     filterMaxRSD                = 30,
     filterMaxRSD_by             = "EQC",
     filterMaxVarSD              = 10,
-    verbose                     = TRUE
+    verbose                     = TRUE,
+    auto_merge_replicates       = TRUE
 ) {
 
   # Empty list for results
@@ -169,7 +183,7 @@ perform_PreprocessingPeakData <- function(
       value <- param_info$value
 
       # Skip validation for NULL values where appropriate
-      if (is.null(value) && param_name %in% c("filterMaxRSD", "filterMaxVarSD")) {
+      if (is.null(value) && param_name %in% c("filterMissing", "filterMaxRSD", "filterMaxVarSD")) {
         next
       }
 
@@ -183,7 +197,8 @@ perform_PreprocessingPeakData <- function(
 
     # Logical parameter validation
     logical_params <- c("filterMissing_by_group", "filterMissing_includeQC",
-                        "driftBatchCorrection", "log_scale", "removeUncorrectedFeatures")
+                        "driftBatchCorrection", "log_scale", "removeUncorrectedFeatures",
+                        "auto_merge_replicates")
     for (param_name in logical_params) {
       if (!is.logical(get(param_name))) {
         errors <- c(errors, paste(param_name, ": Must be logical (TRUE/FALSE)."))
@@ -193,7 +208,7 @@ perform_PreprocessingPeakData <- function(
     # Choice parameter validation
     choice_params <- list(
       dataNormalize = c("none", "Normalization", "sum", "median", "PQN1", "PQN2", "groupPQN", "quantile"),
-      dataTransform = c("none", "log2", "log10", "sqrt", "cbrt", "vsn"),
+      dataTransform = c("none", "log2", "log10", "sqrt", "cbrt", "vsn", "glog"),
       dataScalePCA = c("none", "mean", "meanSD", "mean2SD"),
       dataScalePLS = c("none", "mean", "meanSD", "mean2SD"),
       reference_method = c("mean", "median"),
@@ -244,7 +259,8 @@ perform_PreprocessingPeakData <- function(
       dataScalePCA = dataScalePCA,
       dataScalePLS = dataScalePLS,
       filterMaxRSD = filterMaxRSD,
-      filterMaxVarSD = filterMaxVarSD
+      filterMaxVarSD = filterMaxVarSD,
+      auto_merge_replicates = auto_merge_replicates
     ),
     ProcessingSteps = character(),
     Dimensions = data.frame(
@@ -260,7 +276,7 @@ perform_PreprocessingPeakData <- function(
 
   tryCatch({
     # More efficient transposition
-    data_transposed <- as.data.frame(t(raw_data$raw_data))
+    data_transposed <- as.data.frame(t(raw_data$quality_checked_data))
 
     if (nrow(data_transposed) == 0) {
       stop("Transposed data has zero rows. Check input data structure.")
@@ -328,7 +344,7 @@ perform_PreprocessingPeakData <- function(
   # More efficient metadata extraction
   msg("Extracting metadata...")
 
-  required_cols <- c("Sample", "SubjectID", "Replicate", "Group", "Batch", "Injection", "Normalization", "Response")
+  required_cols <- c("Sample", "SubjectID", "Replicate", "Group", "Group2", "Batch", "Injection", "Normalization", "Response")
   missing_cols <- setdiff(required_cols, colnames(data_transposed))
 
   if (length(missing_cols) > 0) {
@@ -341,6 +357,7 @@ perform_PreprocessingPeakData <- function(
     SubjectID = safe_numeric(data_transposed$SubjectID),
     TechnicalReplicates = data_transposed$Replicate,
     Group = data_transposed$Group,
+    Group2 = data_transposed$Group2,
     Group_ = gsub("SQC|EQC", "QC", data_transposed$Group),
     Batches = safe_numeric(data_transposed$Batch),
     InjectionSequence = safe_numeric(data_transposed$Injection),
@@ -356,7 +373,7 @@ perform_PreprocessingPeakData <- function(
   # Extract feature data more efficiently
   msg("Extracting feature data...")
 
-  metadata_columns <- c("Sample", "SubjectID", "Replicate", "Group", "Batch", "Injection", "Normalization", "Response")
+  metadata_columns <- c("Sample", "SubjectID", "Replicate", "Group", "Group2", "Batch", "Injection", "Normalization", "Response")
   df <- data_transposed[, !colnames(data_transposed) %in% metadata_columns, drop = FALSE]
 
   # Store feature names
@@ -401,36 +418,49 @@ perform_PreprocessingPeakData <- function(
                Samples = nrow(df), Features = ncol(df))
   )
 
-  # Optimized missing value filtering
-  msg(sprintf("Applying missing value filter (threshold: %g%%)", filterMissing))
+  if (!is.null(filterMissing)) {
 
-  filter_missing_features <- function(data, threshold, by_group, include_qc, metadata) {
-    if (by_group) {
-      if (include_qc) {
-        groups <- unique(metadata$Group)
+    # Optimized missing value filtering
+    msg(sprintf("Applying missing value filter (threshold: %g%%)", filterMissing))
+
+    filter_missing_features <- function(data, threshold, by_group, include_qc, metadata) {
+      if (by_group) {
+        if (include_qc) {
+          groups <- unique(metadata$Group)
+        } else {
+          groups <- unique(metadata$Group[!metadata$Group %in% c("SQC", "EQC", "QC")])
+        }
+
+        # Calculate missing percentages per group more efficiently
+        missing_by_group <- sapply(groups, function(g) {
+          group_indices <- metadata$Group == g
+          colMeans(is.na(data[group_indices, , drop = FALSE]))
+        })
+
+        # Remove features with high missingness in ALL groups
+        remove_features <- apply(missing_by_group, 1, function(x) all(x >= threshold / 100))
       } else {
-        groups <- unique(metadata$Group[!metadata$Group %in% c("SQC", "EQC", "QC")])
+        if (include_qc) {
+          missing_overall <- colMeans(is.na(data))
+        } else {
+          non_qc_indices <- !metadata$Group %in% c("SQC", "EQC", "QC")
+          missing_overall <- colMeans(is.na(data[non_qc_indices, , drop = FALSE]))
+        }
+        remove_features <- missing_overall >= threshold / 100
       }
 
-      # Calculate missing percentages per group more efficiently
-      missing_by_group <- sapply(groups, function(g) {
-        group_indices <- metadata$Group == g
-        colMeans(is.na(data[group_indices, , drop = FALSE]))
-      })
-
-      # Remove features with high missingness in ALL groups
-      remove_features <- apply(missing_by_group, 1, function(x) all(x >= threshold / 100))
-    } else {
-      if (include_qc) {
-        missing_overall <- colMeans(is.na(data))
-      } else {
-        non_qc_indices <- !metadata$Group %in% c("SQC", "EQC", "QC")
-        missing_overall <- colMeans(is.na(data[non_qc_indices, , drop = FALSE]))
-      }
-      remove_features <- missing_overall >= threshold / 100
+      return(!remove_features)  # Return which features to keep
     }
 
-    return(!remove_features)  # Return which features to keep
+    # listPreprocessed$data_filteredMissing <- df
+    # listPreprocessed$Dimensions <- rbind(
+    #   listPreprocessed$Dimensions,
+    #   data.frame(Step = "After missing value filter",
+    #              Samples = nrow(df), Features = ncol(df))
+    # )
+  } else {
+    msg("Skipping missing value filtering (filterMissing = NULL)")
+    listPreprocessed$data_filteredMissing <- df
   }
 
   features_to_keep <- filter_missing_features(df, filterMissing, filterMissing_by_group,
@@ -597,7 +627,18 @@ perform_PreprocessingPeakData <- function(
     })
   }
 
-  if (!driftBatchCorrection) {
+  # Add summary message about uncorrected features
+  if (driftBatchCorrection) {
+    if (length(uncorrected_features) > 0) {
+      if (removeUncorrectedFeatures) {
+        msg(sprintf("Removed %d uncorrected features from the dataset.", features_removed_uncorrected))
+      } else {
+        msg(sprintf("Kept %d uncorrected features in the dataset.", length(uncorrected_features)))
+      }
+    } else {
+      msg("All features were successfully corrected by QCRSC.")
+    }
+  } else {
     msg("Skipping drift and batch correction.")
     # Initialize empty uncorrected features info when correction is skipped
     listPreprocessed$UncorrectedFeatures <- list(
@@ -810,6 +851,35 @@ perform_PreprocessingPeakData <- function(
              })
            },
 
+           # Added August 24, 2025
+           "glog" = {
+             if (!requireNamespace("pmp", quietly = TRUE)) {
+               warning("Package 'pmp' not available. Using log10 transformation instead.")
+               min_val <- min(data, na.rm = TRUE)
+               if (min_val <= 0) {
+                 data <- data - min_val + 1
+               }
+               return(log10(data))
+             }
+
+             tryCatch({
+               # pmp::glog_transformation expects Features x Samples, so transpose input
+               data_matrix <- as.matrix(t(data))
+               glog_result <- pmp::glog_transformation(data_matrix, classes = listPreprocessed$Metadata$Group_, qc_label = "QC")
+               # Transpose back to Samples x Features
+               result <- as.data.frame(t(glog_result))
+               msg("Applied glog transformation.")
+               return(result)
+             }, error = function(e) {
+               warning("glog transformation failed: ", e$message, ". Using log10 instead.")
+               min_val <- min(data, na.rm = TRUE)
+               if (min_val <= 0) {
+                 data <- data - min_val + 1
+               }
+               return(log10(data))
+             })
+           },
+
            {
              warning("Unknown transformation method. No transformation applied.")
              return(data)
@@ -1014,142 +1084,360 @@ perform_PreprocessingPeakData <- function(
   }
 
   # Apply variance filtering
-  listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered <- apply_variance_filtering(
+  listPreprocessed$data_scaledPCA_varFiltered <- apply_variance_filtering(
     listPreprocessed$data_scaledPCA_rsdFiltered, filterMaxVarSD, "PCA"
   )
 
-  listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered <- apply_variance_filtering(
+  listPreprocessed$data_scaledPLS_varFiltered <- apply_variance_filtering(
     listPreprocessed$data_scaledPLS_rsdFiltered, filterMaxVarSD, "PLS"
   )
 
-  # Update final dimensions
+  # Update dimensions for low variance-filtered data
   listPreprocessed$Dimensions <- rbind(
     listPreprocessed$Dimensions,
-    data.frame(Step = "Final (PCA ready)",
-               Samples = nrow(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered),
-               Features = ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered))
+    data.frame(Step = "After low variance filtering (PCA)",
+               Samples = nrow(listPreprocessed$data_scaledPCA_varFiltered),
+               Features = ncol(listPreprocessed$data_scaledPCA_varFiltered))
   )
 
   listPreprocessed$Dimensions <- rbind(
     listPreprocessed$Dimensions,
-    data.frame(Step = "Final (PLS ready)",
-               Samples = nrow(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
-               Features = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered))
+    data.frame(Step = "After low variance filtering (PLS)",
+               Samples = nrow(listPreprocessed$data_scaledPLS_varFiltered),
+               Features = ncol(listPreprocessed$data_scaledPLS_varFiltered))
   )
 
-  # Enhanced plotting function for drift/batch correction visualization
-  create_enhanced_drift_plots <- function(df_before, df_after, metadata, n_features = 6) {
-    msg("Creating visualization plots for drift/batch correction...")
-
-    if (!requireNamespace("ggplot2", quietly = TRUE) ||
-        !requireNamespace("tidyr", quietly = TRUE) ||
-        !requireNamespace("gridExtra", quietly = TRUE)) {
-      warning("Required packages for plotting not available. Skipping plot creation.")
-      return(NULL)
-    }
+  # Helper function for merging technical replicates
+  merge_technical_replicates <- function(data_pca, data_pls, metadata, verbose = TRUE) {
+    msg <- function(...) if (verbose) message(...)
 
     tryCatch({
-      # Select random features more safely
-      n_features <- min(n_features, ncol(df_before), ncol(df_after))
-      if (n_features < 1) {
-        warning("No features available for plotting.")
-        return(NULL)
+      msg("Checking for technical replicates to merge...")
+
+      # Check if SubjectID and TechnicalReplicates columns have meaningful values
+      has_subject_id <- !all(is.na(metadata$SubjectID)) &&
+        length(unique(metadata$SubjectID[!is.na(metadata$SubjectID)])) > 1
+
+      has_replicates <- !all(is.na(metadata$TechnicalReplicates)) &&
+        length(unique(metadata$TechnicalReplicates[!is.na(metadata$TechnicalReplicates)])) > 1
+
+      if (!has_subject_id || !has_replicates) {
+        msg("No meaningful replicates found. Skipping replicate merging.")
+        return(list(
+          data_pca = data_pca,
+          data_pls = data_pls,
+          metadata = metadata,
+          merged = FALSE,
+          n_samples_before = nrow(metadata),
+          n_samples_after = nrow(metadata)
+        ))
       }
 
-      selected_features <- sample(1:ncol(df_before), n_features, replace = FALSE)
+      msg("Technical replicates detected. Proceeding with merging...")
 
-      # Create individual plots
-      plot_list <- list()
+      # Create a comprehensive data frame for processing
+      comprehensive_data_pca <- cbind(metadata, data_pca)
+      comprehensive_data_pls <- cbind(metadata, data_pls)
 
-      for (i in seq_along(selected_features)) {
-        feature_idx <- selected_features[i]
-        feature_name <- colnames(df_before)[feature_idx]
+      # Separate QC and non-QC samples
+      qc_indices <- metadata$Group %in% c("SQC", "EQC", "QC")
 
-        # Prepare plot data with better error handling
-        plot_data <- data.frame(
-          sample_id = 1:nrow(df_before),
-          before = log10(pmax(df_before[, feature_idx], 1e-10)),  # Prevent log of zero
-          after = log10(pmax(df_after[, feature_idx], 1e-10)),
-          class = metadata$Group_,
-          batch = as.factor(metadata$Batches),
-          stringsAsFactors = FALSE
-        )
+      # Process QC samples (no averaging needed, just restructure)
+      if (any(qc_indices)) {
+        qc_data_pca <- comprehensive_data_pca[qc_indices, ]
+        qc_data_pls <- comprehensive_data_pls[qc_indices, ]
 
-        # Transform to long format
-        plot_data_long <- tidyr::pivot_longer(
-          plot_data,
-          cols = c("before", "after"),
-          names_to = "correction",
-          values_to = "intensity"
-        )
-
-        plot_data_long$correction <- factor(plot_data_long$correction,
-                                            levels = c("before", "after"))
-
-        # Create plot
-        p <- ggplot2::ggplot(plot_data_long, ggplot2::aes(x = sample_id, y = intensity)) +
-          ggplot2::geom_point(ggplot2::aes(color = class, shape = batch),
-                              size = 2, alpha = 0.7) +
-          ggplot2::geom_smooth(data = subset(plot_data_long, class == "QC"),
-                               formula = y ~ x,
-                               method = "loess", se = TRUE, alpha = 0.3,
-                               color = "darkred", linetype = "dashed") +
-          ggplot2::facet_wrap(~ correction, scales = "free_y",
-                              labeller = ggplot2::labeller(
-                                correction = c(before = "Before Correction",
-                                               after = "After Correction"))) +
-          ggplot2::scale_color_manual(values = c("QC" = "red", "Sample" = "blue",
-                                                 "Blank" = "green")) +
-          ggplot2::labs(title = paste("Feature:", feature_name),
-                        x = "Sample Index",
-                        y = "log10(Intensity)",
-                        color = "Class", shape = "Batch") +
-          ggplot2::theme_minimal() +
-          ggplot2::theme(
-            plot.title = ggplot2::element_text(size = 12, hjust = 0.5),
-            axis.text = ggplot2::element_text(size = 10),
-            axis.title = ggplot2::element_text(size = 11),
-            legend.title = ggplot2::element_text(size = 10),
-            legend.text = ggplot2::element_text(size = 9),
-            strip.text = ggplot2::element_text(size = 10, face = "bold")
-          )
-
-        plot_list[[i]] <- p
+        # Create consistent identifiers for QC samples (SIMPLIFIED)
+        qc_data_pca$MergeID <- qc_data_pca$Samples
+        qc_data_pls$MergeID <- qc_data_pls$Samples
+      } else {
+        qc_data_pca <- NULL
+        qc_data_pls <- NULL
       }
 
-      # Create combined plot
-      n_batches <- length(unique(metadata$Batches))
-      main_title <- ifelse(n_batches == 1,
-                           "Random Features Before and After Drift-Correction",
-                           "Random Features Before and After Drift- and Batch-Correction")
+      # Process non-QC samples (these need averaging)
+      if (any(!qc_indices)) {
+        non_qc_data_pca <- comprehensive_data_pca[!qc_indices, ]
+        non_qc_data_pls <- comprehensive_data_pls[!qc_indices, ]
 
-      combined_plot <- do.call(gridExtra::grid.arrange,
-                               c(plot_list, list(ncol = 2, top = main_title)))
+        # Create merge identifier for non-QC samples (SIMPLIFIED)
+        non_qc_data_pca$MergeID <- paste0(non_qc_data_pca$TechnicalReplicates)
+        non_qc_data_pls$MergeID <- paste0(non_qc_data_pls$TechnicalReplicates)
 
-      msg("Visualization plots created successfully.")
-      return(combined_plot)
+        # Get feature column indices for PCA data
+        feature_cols_pca <- which(!colnames(non_qc_data_pca) %in%
+                                    c("Samples", "SubjectID", "TechnicalReplicates", "Group", "Group2",
+                                      "Group_", "Batches", "InjectionSequence", "Normalization",
+                                      "Response", "MergeID"))
+
+        # Get feature column indices for PLS data (SEPARATE!)
+        feature_cols_pls <- which(!colnames(non_qc_data_pls) %in%
+                                    c("Samples", "SubjectID", "TechnicalReplicates", "Group", "Group2",
+                                      "Group_", "Batches", "InjectionSequence", "Normalization",
+                                      "Response", "MergeID"))
+
+        # Average technical replicates for PCA data
+        merged_non_qc_pca <- non_qc_data_pca %>%
+          group_by(MergeID) %>%
+          summarise(
+            # Keep first occurrence of metadata
+            TechnicalReplicates = first(TechnicalReplicates),
+            SubjectID = first(SubjectID),
+            Group = first(Group),
+            Group2 = first(Group2),
+            Batches = first(Batches),
+            # Add to check if this works
+            InjectionSequence = first(InjectionSequence),
+            Normalization = first(Normalization),
+            Response = first(Response),
+            # Average the feature data
+            across(all_of(feature_cols_pca), ~mean(., na.rm = TRUE)),
+            .groups = 'drop'
+          ) %>%
+          arrange(SubjectID)
+
+        # Average technical replicates for PLS data
+        merged_non_qc_pls <- non_qc_data_pls %>%
+          group_by(MergeID) %>%
+          summarise(
+            # Keep first occurrence of metadata
+            TechnicalReplicates = first(TechnicalReplicates),
+            SubjectID = first(SubjectID),
+            Group = first(Group),
+            Group2 = first(Group2),
+            Batches = first(Batches),
+            # Add to check if this works
+            InjectionSequence = first(InjectionSequence),
+            Normalization = first(Normalization),
+            Response = first(Response),
+            # Average the feature data
+            across(all_of(feature_cols_pls), ~mean(., na.rm = TRUE)),
+            .groups = 'drop'
+          ) %>%
+          arrange(SubjectID)
+      } else {
+        merged_non_qc_pca <- NULL
+        merged_non_qc_pls <- NULL
+      }
+
+      # Combine QC and merged non-QC data
+      if (!is.null(qc_data_pca) && !is.null(merged_non_qc_pca)) {
+        # Ensure QC data has the same structure as merged non-QC data
+        qc_subset_pca <- qc_data_pca[, colnames(merged_non_qc_pca)]
+        qc_subset_pls <- qc_data_pls[, colnames(merged_non_qc_pls)]
+
+        final_data_pca <- rbind(merged_non_qc_pca, qc_subset_pca)
+        final_data_pls <- rbind(merged_non_qc_pls, qc_subset_pls)
+      } else if (!is.null(merged_non_qc_pca)) {
+        final_data_pca <- merged_non_qc_pca
+        final_data_pls <- merged_non_qc_pls
+      } else if (!is.null(qc_data_pca)) {
+        feature_cols_qc_pca <- which(!colnames(qc_data_pca) %in%
+                                       c("Samples", "SubjectID", "TechnicalReplicates", "Group", "Group2",
+                                         "Group_", "Batches", "InjectionSequence", "Normalization", "Response", "MergeID"))
+        feature_cols_qc_pls <- which(!colnames(qc_data_pls) %in%
+                                       c("Samples", "SubjectID", "TechnicalReplicates", "Group", "Group2",
+                                         "Group_", "Batches", "InjectionSequence", "Normalization", "Response", "MergeID"))
+
+        final_data_pca <- qc_data_pca[, c("MergeID", "TechnicalReplicates", "SubjectID", "Group", "Group2",
+                                          "Batches", "InjectionSequence", "Normalization", "Response",
+                                          colnames(qc_data_pca)[feature_cols_qc_pca])]
+        final_data_pls <- qc_data_pls[, c("MergeID", "TechnicalReplicates", "SubjectID", "Group", "Group2",
+                                          "Batches", "InjectionSequence", "Normalization", "Response",
+                                          colnames(qc_data_pls)[feature_cols_qc_pls])]
+      } else {
+        stop("No valid data found for merging.")
+      }
+
+      # Arrange by SubjectID
+      final_data_pca <- final_data_pca %>% arrange(SubjectID)
+      final_data_pls <- final_data_pls %>% arrange(SubjectID)
+
+      # Prepare final outputs
+      # Extract feature data (remove metadata columns)
+      feature_cols_final_pca <- which(!colnames(final_data_pca) %in%
+                                        c("MergeID", "TechnicalReplicates", "SubjectID",
+                                          "Group", "Group2", "Batches", "InjectionSequence", "Normalization", "Response"))
+      feature_cols_final_pls <- which(!colnames(final_data_pls) %in%
+                                        c("MergeID", "TechnicalReplicates", "SubjectID",
+                                          "Group", "Group2", "Batches", "InjectionSequence", "Normalization", "Response"))
+
+      merged_features_pca <- final_data_pca[, feature_cols_final_pca, drop = FALSE]
+      merged_features_pls <- final_data_pls[, feature_cols_final_pls, drop = FALSE]
+
+      # Convert to data.frame and set row names to MergeID (FIXED)
+      merged_features_pca <- as.data.frame(merged_features_pca)
+      merged_features_pls <- as.data.frame(merged_features_pls)
+      rownames(merged_features_pca) <- final_data_pca$MergeID
+      rownames(merged_features_pls) <- final_data_pls$MergeID
+
+      # Create new metadata
+      merged_metadata <- data.frame(
+        Samples = final_data_pca$MergeID,  # Use MergeID as sample identifier
+        SubjectID = final_data_pca$SubjectID,
+        TechnicalReplicates = final_data_pca$TechnicalReplicates,
+        Group = final_data_pca$Group,
+        Group2 = final_data_pca$Group2,
+        Group_ = gsub("SQC|EQC", "QC", final_data_pca$Group),
+        Batches = final_data_pca$Batches,
+        # Removed if code above works
+        # InjectionSequence = seq_len(nrow(final_data_pca)),  # Create new sequence
+        # Normalization = rep(1, nrow(final_data_pca)),       # Default normalization
+        # Response = rep(NA, nrow(final_data_pca)),           # Default response
+        # Another code
+        # InjectionSequence = first(metadata$InjectionSequence),
+        # Normalization = first(metadata$Normalization),
+        # Response = first(metadata$Response),
+        # Yet another code to see if this works
+        InjectionSequence = final_data_pca$InjectionSequence,
+        Normalization = final_data_pca$Normalization,
+        Response = final_data_pca$Response,
+        stringsAsFactors = FALSE
+      )
+
+      n_samples_before <- nrow(metadata)
+      n_samples_after <- nrow(merged_metadata)
+      n_qc <- sum(merged_metadata$Group_ == "QC")
+
+      msg(sprintf("Successfully merged technical replicates: %d samples -> %d samples (including %d QC samples)",
+                  n_samples_before, n_samples_after, n_qc))
+
+      return(list(
+        data_pca = merged_features_pca,
+        data_pls = merged_features_pls,
+        metadata = merged_metadata,
+        merged = TRUE,
+        n_samples_before = n_samples_before,
+        n_samples_after = n_samples_after
+      ))
 
     }, error = function(e) {
-      warning("Plot creation failed: ", e$message)
-      return(NULL)
+      warning("Error in merging technical replicates: ", e$message, ". Returning original data.")
+      return(list(
+        data_pca = data_pca,
+        data_pls = data_pls,
+        metadata = metadata,
+        merged = FALSE,
+        n_samples_before = nrow(metadata),
+        n_samples_after = nrow(metadata),
+        error = e$message
+      ))
     })
   }
 
-  # Create visualization plots if data exists
-  if (exists("listPreprocessed") && "data_no_NA" %in% names(listPreprocessed)) {
-    listPreprocessed$plot_beforeAfterDriftBatchCorrection <- create_enhanced_drift_plots(
-      listPreprocessed$data_no_NA,
-      listPreprocessed$data_driftBatchCorrected,
-      listPreprocessed$Metadata
+  # Technical replicate merging
+  if (auto_merge_replicates) {
+    msg("Attempting to merge technical replicates...")
+
+    merge_result <- merge_technical_replicates(
+      data_pca = listPreprocessed$data_scaledPCA_varFiltered,
+      data_pls = listPreprocessed$data_scaledPLS_varFiltered,
+      metadata = listPreprocessed$Metadata,
+      verbose = verbose
     )
+
+    if (merge_result$merged) {
+      # Store merged data
+      listPreprocessed$data_scaledPCA_merged <- merge_result$data_pca
+      listPreprocessed$data_scaledPLS_merged <- merge_result$data_pls
+      listPreprocessed$Metadata_merged <- merge_result$metadata
+
+      # Update dimensions for merged data
+      listPreprocessed$Dimensions <- rbind(
+        listPreprocessed$Dimensions,
+        data.frame(Step = "After replicate merging (PCA)",
+                   Samples = nrow(merge_result$data_pca),
+                   Features = ncol(merge_result$data_pca))
+      )
+
+      listPreprocessed$Dimensions <- rbind(
+        listPreprocessed$Dimensions,
+        data.frame(Step = "After replicate merging (PLS)",
+                   Samples = nrow(merge_result$data_pls),
+                   Features = ncol(merge_result$data_pls))
+      )
+
+      # Store merging information
+      listPreprocessed$ReplicateMerging <- list(
+        merged = TRUE,
+        n_samples_before = merge_result$n_samples_before,
+        n_samples_after = merge_result$n_samples_after,
+        reduction_count = merge_result$n_samples_before - merge_result$n_samples_after
+      )
+
+      # msg(sprintf("Replicate merging completed: %d -> %d samples",
+      #             merge_result$n_samples_before, merge_result$n_samples_after))
+
+    } else {
+      listPreprocessed$ReplicateMerging <- list(
+        merged = FALSE,
+        reason = "No meaningful replicates found or merging failed"
+      )
+
+      if (!is.null(merge_result$error)) {
+        listPreprocessed$ReplicateMerging$error <- merge_result$error
+      }
+    }
+
+    # # Update final dimensions
+    # listPreprocessed$Dimensions <- rbind(
+    #   listPreprocessed$Dimensions,
+    #   data.frame(Step = "Final (PCA ready)",
+    #              Samples = nrow(listPreprocessed$data_scaledPCA_varFiltered),
+    #              Features = ncol(listPreprocessed$data_scaledPCA_varFiltered))
+    # )
+    # listPreprocessed$Dimensions <- rbind(
+    #   listPreprocessed$Dimensions,
+    #   data.frame(Step = "Final (PLS ready)",
+    #              Samples = nrow(listPreprocessed$data_scaledPLS_varFiltered),
+    #              Features = ncol(listPreprocessed$data_scaledPLS_varFiltered))
+    # )
+
+  } else {
+    msg("Automatic replicate merging disabled.")
+    listPreprocessed$ReplicateMerging <- list(
+      merged = FALSE,
+      reason = "Disabled by user (auto_merge_replicates = FALSE)"
+    )
+
+    # # Update final dimensions
+    # listPreprocessed$Dimensions <- rbind(
+    #   listPreprocessed$Dimensions,
+    #   data.frame(Step = "Final (PCA ready)",
+    #              Samples = nrow(listPreprocessed$data_scaledPCA_varFiltered),
+    #              Features = ncol(listPreprocessed$data_scaledPCA_varFiltered))
+    # )
+    # listPreprocessed$Dimensions <- rbind(
+    #   listPreprocessed$Dimensions,
+    #   data.frame(Step = "Final (PLS ready)",
+    #              Samples = nrow(listPreprocessed$data_scaledPLS_varFiltered),
+    #              Features = ncol(listPreprocessed$data_scaledPLS_varFiltered))
+    # )
   }
+
+  gc_if_needed()
+
+  # # Update final dimensions
+  # listPreprocessed$Dimensions <- rbind(
+  #   listPreprocessed$Dimensions,
+  #   data.frame(Step = "Final (PCA ready)",
+  #              Samples = nrow(listPreprocessed$data_scaledPCA_varFiltered),
+  #              Features = ncol(listPreprocessed$data_scaledPCA_varFiltered))
+  # )
+  #
+  # listPreprocessed$Dimensions <- rbind(
+  #   listPreprocessed$Dimensions,
+  #   data.frame(Step = "Final (PLS ready)",
+  #              Samples = nrow(listPreprocessed$data_scaledPLS_varFiltered),
+  #              Features = ncol(listPreprocessed$data_scaledPLS_varFiltered))
+  # )
 
   # Add processing summary (updated to include uncorrected features info)
   listPreprocessed$ProcessingSummary <- list(
     total_samples_processed = nrow(listPreprocessed$Metadata),
     total_features_original = length(listPreprocessed$All_Features_Metabolites),
-    total_features_final_PCA = ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered),
-    total_features_final_PLS = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
+    total_features_final_PCA = ncol(listPreprocessed$data_scaledPCA_varFiltered),
+    total_features_final_PLS = ncol(listPreprocessed$data_scaledPLS_varFiltered),
     outliers_removed = length(listPreprocessed$outliers_removed %||% character(0)),
     missing_values_imputed = sum(is.na(listPreprocessed$SamplesXFeatures)),
     drift_batch_correction_applied = driftBatchCorrection,
@@ -1160,16 +1448,17 @@ perform_PreprocessingPeakData <- function(
     scaling_method_PCA = dataScalePCA,
     scaling_method_PLS = dataScalePLS,
     rsd_filtering_applied = !is.null(filterMaxRSD),
-    variance_filtering_applied = !is.null(filterMaxVarSD)
+    variance_filtering_applied = !is.null(filterMaxVarSD),
+    replicates_merged = listPreprocessed$ReplicateMerging$merged
   )
 
   # Add data quality metrics (updated)
   listPreprocessed$QualityMetrics <- list(
     data_completeness = 1 - sum(is.na(listPreprocessed$data_transformed)) /
       (nrow(listPreprocessed$data_transformed) * ncol(listPreprocessed$data_transformed)),
-    feature_retention_rate_PCA = ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered) /
+    feature_retention_rate_PCA = ncol(listPreprocessed$data_scaledPCA_varFiltered) /
       length(listPreprocessed$All_Features_Metabolites),
-    feature_retention_rate_PLS = ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered) /
+    feature_retention_rate_PLS = ncol(listPreprocessed$data_scaledPLS_varFiltered) /
       length(listPreprocessed$All_Features_Metabolites),
     sample_retention_rate = nrow(listPreprocessed$Metadata) /
       (nrow(listPreprocessed$Metadata) + length(listPreprocessed$outliers_removed %||% character(0))),
@@ -1182,26 +1471,29 @@ perform_PreprocessingPeakData <- function(
   # Final cleanup
   gc_if_needed()
 
-  msg("Data preprocessing pipeline completed successfully!")
-  msg(sprintf("Final dataset dimensions: %d samples X %d features (PCA-ready)",
-              nrow(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered),
-              ncol(listPreprocessed$data_scaledPCA_rsdFiltered_varFiltered)))
-  msg(sprintf("Final dataset dimensions: %d samples X %d features (PLS-ready)",
-              nrow(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered),
-              ncol(listPreprocessed$data_scaledPLS_rsdFiltered_varFiltered)))
-
-  # Add summary message about uncorrected features
-  if (driftBatchCorrection) {
-    if (length(uncorrected_features) > 0) {
-      if (removeUncorrectedFeatures) {
-        msg(sprintf("Removed %d uncorrected features from the dataset.", features_removed_uncorrected))
-      } else {
-        msg(sprintf("Kept %d uncorrected features in the dataset.", length(uncorrected_features)))
-      }
-    } else {
-      msg("All features were successfully corrected by QCRSC.")
+  if (auto_merge_replicates) {
+    # Summary message about replicate merging
+    if (listPreprocessed$ReplicateMerging$merged) {
+      # msg(sprintf("Technical replicates merged: %d -> %d samples",
+      #             listPreprocessed$ReplicateMerging$n_samples_before,
+      #             listPreprocessed$ReplicateMerging$n_samples_after))
+      msg(sprintf("Final merged dataset dimensions: %d samples X %d features (PCA-ready)",
+                  nrow(listPreprocessed$data_scaledPCA_merged),
+                  ncol(listPreprocessed$data_scaledPCA_merged)))
+      msg(sprintf("Final merged dataset dimensions: %d samples X %d features (PLS-ready)",
+                  nrow(listPreprocessed$data_scaledPLS_merged),
+                  ncol(listPreprocessed$data_scaledPLS_merged)))
     }
+  } else {
+    msg(sprintf("Final dataset dimensions: %d samples X %d features (PCA-ready)",
+                nrow(listPreprocessed$data_scaledPCA_varFiltered),
+                ncol(listPreprocessed$data_scaledPCA_varFiltered)))
+    msg(sprintf("Final dataset dimensions: %d samples X %d features (PLS-ready)",
+                nrow(listPreprocessed$data_scaledPLS_varFiltered),
+                ncol(listPreprocessed$data_scaledPLS_varFiltered)))
   }
+
+  msg("Data preprocessing pipeline completed successfully!")
 
   # Add timestamp end
   listPreprocessed$ProcessingTimestampEnd <- Sys.time()
@@ -1222,4 +1514,167 @@ perform_PreprocessingPeakData <- function(
   }
 
   return(listPreprocessed)
+}
+
+# Added August 24, 2025
+
+# Function to create before and after batch correction plots:
+
+#' Create Before and After Batch Correction Plots
+#'
+#' @description
+#' Creates visualization plots comparing data before and after drift/batch correction.
+#' This function generates plots showing the correction effects for selected features.
+#'
+#' @param preprocessed_data List. Results from the `perform_PreprocessingPeakData` function.
+#' @param n_features Numeric. Number of random features to plot. Default is 6.
+#' @param feature_names Vector. Specific feature names to plot. If provided, overrides n_features.
+#'
+#' @returns A combined plot showing before and after correction for selected features.
+#'
+#' @author John Lennon L. Calorio
+#'
+#' @importFrom ggplot2 ggplot aes geom_point geom_smooth facet_wrap scale_color_manual labs theme_minimal theme element_text
+#' @importFrom tidyr pivot_longer
+#' @importFrom gridExtra grid.arrange
+#'
+#' @export
+
+plot_before_after_correction <- function(preprocessed_data, n_features = 6, feature_names = NULL) {
+
+  # Input validation
+  if (!is.list(preprocessed_data)) {
+    stop("'preprocessed_data' must be a list object from perform_PreprocessingPeakData function.")
+  }
+
+  if(!preprocessed_data$Parameters$driftBatchCorrection) {
+    stop("The 'driftBatchCorrection' in the 'preprocessed_data' provided was set to FALSE, hence, no data from drift and batch correction was generated.")
+  }
+
+  if (!"FunctionOrigin" %in% names(preprocessed_data)) {
+    stop("'preprocessed_data' is missing 'FunctionOrigin' field.")
+  }
+
+  if (preprocessed_data$FunctionOrigin != "perform_PreprocessingPeakData") {
+    stop("The 'preprocessed_data' must be from the 'perform_PreprocessingPeakData' function.")
+  }
+
+  # Check if required data fields exist
+  required_fields <- c("data_no_NA", "data_driftBatchCorrected", "Metadata")
+  missing_fields <- setdiff(required_fields, names(preprocessed_data))
+
+  if (length(missing_fields) > 0) {
+    stop("Missing required fields in preprocessed_data: ",
+         paste(missing_fields, collapse = ", "))
+  }
+
+  # Check for required packages
+  if (!requireNamespace("ggplot2", quietly = TRUE) ||
+      !requireNamespace("tidyr", quietly = TRUE) ||
+      !requireNamespace("gridExtra", quietly = TRUE)) {
+    stop("Required packages for plotting not available. Please install: ggplot2, tidyr, gridExtra")
+  }
+
+  # Extract data
+  df_before <- preprocessed_data$data_no_NA
+  df_after <- preprocessed_data$data_driftBatchCorrected
+  metadata <- preprocessed_data$Metadata
+
+  # Check if correction was actually applied
+  if (identical(df_before, df_after)) {
+    warning("Data before and after correction are identical. No correction was applied.")
+  }
+
+  # Feature selection
+  if (!is.null(feature_names)) {
+    # Use specified features
+    available_features <- intersect(feature_names, colnames(df_before))
+    if (length(available_features) == 0) {
+      stop("None of the specified feature names found in the data.")
+    }
+    if (length(available_features) < length(feature_names)) {
+      warning(paste("Some specified features not found:",
+                    paste(setdiff(feature_names, available_features), collapse = ", ")))
+    }
+    selected_features <- match(available_features, colnames(df_before))
+    n_features <- length(selected_features)
+  } else {
+    # Random feature selection
+    n_features <- min(n_features, ncol(df_before), ncol(df_after))
+    if (n_features < 1) {
+      stop("No features available for plotting.")
+    }
+    selected_features <- sample(1:ncol(df_before), n_features, replace = FALSE)
+  }
+
+  # Create individual plots
+  plot_list <- list()
+
+  for (i in seq_along(selected_features)) {
+    feature_idx <- selected_features[i]
+    feature_name <- colnames(df_before)[feature_idx]
+
+    # Prepare plot data with better error handling
+    plot_data <- data.frame(
+      sample_id = 1:nrow(df_before),
+      before = log10(pmax(df_before[, feature_idx], 1e-10)),  # Prevent log of zero
+      after = log10(pmax(df_after[, feature_idx], 1e-10)),
+      class = metadata$Group_,
+      batch = as.factor(metadata$Batches),
+      stringsAsFactors = FALSE
+    )
+
+    # Transform to long format
+    plot_data_long <- tidyr::pivot_longer(
+      plot_data,
+      cols = c("before", "after"),
+      names_to = "correction",
+      values_to = "intensity"
+    )
+
+    plot_data_long$correction <- factor(plot_data_long$correction,
+                                        levels = c("before", "after"))
+
+    # Create plot
+    p <- ggplot2::ggplot(plot_data_long, ggplot2::aes(x = sample_id, y = intensity)) +
+      ggplot2::geom_point(ggplot2::aes(color = class, shape = batch),
+                          size = 2, alpha = 0.7) +
+      ggplot2::geom_smooth(data = subset(plot_data_long, class == "QC"),
+                           formula = y ~ x,
+                           method = "loess", se = TRUE, alpha = 0.3,
+                           color = "darkred", linetype = "dashed") +
+      ggplot2::facet_wrap(~ correction, scales = "free_y",
+                          labeller = ggplot2::labeller(
+                            correction = c(before = "Before Correction",
+                                           after = "After Correction"))) +
+      ggplot2::scale_color_manual(values = c("QC" = "red", "Sample" = "blue",
+                                             "Blank" = "green")) +
+      ggplot2::labs(title = paste("Feature:", feature_name),
+                    x = "Sample Index",
+                    y = "log10(Intensity)",
+                    color = "Class", shape = "Batch") +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 12, hjust = 0.5),
+        axis.text = ggplot2::element_text(size = 10),
+        axis.title = ggplot2::element_text(size = 11),
+        legend.title = ggplot2::element_text(size = 10),
+        legend.text = ggplot2::element_text(size = 9),
+        strip.text = ggplot2::element_text(size = 10, face = "bold")
+      )
+
+    plot_list[[i]] <- p
+  }
+
+  # Create combined plot
+  n_batches <- length(unique(metadata$Batches))
+  main_title <- ifelse(n_batches == 1,
+                       "Random Features Before and After Drift-Correction",
+                       "Random Features Before and After Drift- and Batch-Correction")
+
+  combined_plot <- do.call(gridExtra::grid.arrange,
+                           c(plot_list, list(ncol = 2, top = main_title)))
+
+  message("Before/after correction plots created successfully.")
+  return(combined_plot)
 }
