@@ -13,16 +13,18 @@ Imports:
     glmnet,
     gridExtra,
     Hmisc,
-    htmlwidgets,
+    lme4,
+    lmerTest,
     magrittr,
     mixOmics,
     patchwork,
-    pheatmap,
     plotly,
+    pheatmap,
     pROC,
     purrr,
     RColorBrewer,
     readxl,
+    rlang,
     ropls,
     stringr,
     svglite,
@@ -33,13 +35,13 @@ Suggests:
     BiocManager,
     ggstatsplot,
     grid,
+    htmlwidgets,
     knitr,
     openxlsx,
     pmp,
     rmarkdown,
     rstudioapi,
     testthat (>= 3.0.0),
-    tibble,
     tools,
     vsn
 Depends:
@@ -53,3 +55,4 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3
+VignetteBuilder: knitr
