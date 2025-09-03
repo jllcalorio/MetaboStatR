@@ -1,4 +1,4 @@
-#' Perform Orthogonal Partial Least Squares Discriminant Analysis (OPLS-DA) and Related Methods
+#' Perform Partial Least Squares (PLS) Related Methods
 #'
 #' This function performs various Partial Least Squares (PLS) methods including PLS, PLS-DA,
 #' OPLS-DA, and sparse PLS-DA (sPLS-DA) on metabolomics or other omics data. It provides
@@ -86,6 +86,10 @@
 #' @importFrom stats cov cor reorder
 #' @importFrom utils combn
 #' @importFrom grDevices colorRampPalette
+#'
+#' @references Eriksson et al. (2006). Multi- and Megarvariate Data Analysis. Umetrics Academy. Rosipal and Kramer (2006). Overview and recent advances in partial least squares Tenenhaus (1990). La regression PLS : theorie et pratique. Technip. Wehrens (2011). Chemometrics with R. Springer. Wold et al. (2001). PLS-regression: a basic tool of chemometrics (for PLS)
+#' @references Rohart F, Gautier B, Singh A, Lê Cao K-A. mixOmics: an R package for 'omics feature selection and multiple data integration. PLoS Comput Biol 13(11): e1005752 (for sPLS)
+#' @references Galindo-Prieto B., Eriksson L. and Trygg J. (2014). Variable influence on projection (VIP) for orthogonal projections to latent structures (OPLS). Journal of Chemometrics 28, 623-632. (for getVipVn)
 #'
 #' @export
 perform_PLS <- function(data,
@@ -854,37 +858,37 @@ print.pls_results <- function(x, ...) {
   invisible(x)
 }
 
-#' Plot Method for PLS Analysis Results
-#'
-#' @param x A pls_results object returned by perform_PLS
-#' @param comparison Integer or character specifying which comparison to plot (default: 1)
-#' @param type Character specifying plot type: "scores", "vipabundance", "splot", "loadings", "abundance"
-#' @param ... Additional arguments (not used)
-#' @return A ggplot object
-#' @export
-plot.pls_results <- function(x, comparison = 1, type = "scores", ...) {
-
-  if (length(x$summary$comparison_names) == 0) {
-    stop("No comparisons found in results")
-  }
-
-  if (is.numeric(comparison)) {
-    if (comparison > length(x$summary$comparison_names)) {
-      stop("Comparison index out of range")
-    }
-    comp_name <- x$summary$comparison_names[comparison]
-  } else {
-    comp_name <- comparison
-  }
-
-  # Find the appropriate plot
-  plot_key <- paste0("plot_", stringr::str_to_title(type), "_", comp_name)
-
-  if (!plot_key %in% names(x)) {
-    available_plots <- names(x)[grepl(paste0("_", comp_name, "$"), names(x)) & grepl("^plot_", names(x))]
-    stop("Plot not found. Available plots for this comparison: ",
-         paste(gsub("^plot_|_.*$", "", available_plots), collapse = ", "))
-  }
-
-  return(x[[plot_key]])
-}
+# #' Plot Method for PLS Analysis Results
+# #'
+# #' @param x A pls_results object returned by perform_PLS
+# #' @param comparison Integer or character specifying which comparison to plot (default: 1)
+# #' @param type Character specifying plot type: "scores", "vipabundance", "splot", "loadings", "abundance"
+# #' @param ... Additional arguments (not used)
+# #' @return A ggplot object
+# #' @export
+# plot.pls_results <- function(x, comparison = 1, type = "scores", ...) {
+#
+#   if (length(x$summary$comparison_names) == 0) {
+#     stop("No comparisons found in results")
+#   }
+#
+#   if (is.numeric(comparison)) {
+#     if (comparison > length(x$summary$comparison_names)) {
+#       stop("Comparison index out of range")
+#     }
+#     comp_name <- x$summary$comparison_names[comparison]
+#   } else {
+#     comp_name <- comparison
+#   }
+#
+#   # Find the appropriate plot
+#   plot_key <- paste0("plot_", stringr::str_to_title(type), "_", comp_name)
+#
+#   if (!plot_key %in% names(x)) {
+#     available_plots <- names(x)[grepl(paste0("_", comp_name, "$"), names(x)) & grepl("^plot_", names(x))]
+#     stop("Plot not found. Available plots for this comparison: ",
+#          paste(gsub("^plot_|_.*$", "", available_plots), collapse = ", "))
+#   }
+#
+#   return(x[[plot_key]])
+# }
