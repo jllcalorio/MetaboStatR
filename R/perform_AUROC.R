@@ -11,7 +11,8 @@
 #'
 #' @param data_PP List. Results from the \code{performPreprocessingPeakData} function.
 #'   Must contain \code{$Metadata} with \code{$Group} column and
-#'   \code{$data_scaledPCA_rsdFiltered_varFiltered} matrix.
+#'   \code{$data_scaledPCA_varFiltered} or \code{$data_scaledPCA_merged} matrix.
+#'   The latter is for the case when replicates were merged.
 #' @param data_DR List. Results from the \code{performDimensionReduction} function
 #'   (OPLS-DA). Must contain VIP score data frames with naming pattern
 #'   \code{data_VIPScores_[group1] vs. [group2]}.
@@ -106,12 +107,18 @@
 #' \code{\link[pROC]{roc}}, \code{\link[pROC]{auc}}, \code{\link[pROC]{ci}}
 #'
 #' @importFrom dplyr arrange filter select any_of full_join desc
-#' @importFrom ggplot2 ggplot geom_line aes labs theme_minimal theme scale_color_manual
+#' @importFrom ggplot2 ggplot geom_line aes labs theme_minimal theme scale_color_manual geom_abline
 #' @importFrom pROC roc auc ci
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom grDevices rainbow
 #' @importFrom utils combn head
 #' @importFrom stats median
+#'
+#' @references Tom Fawcett (2006) “An introduction to ROC analysis”. Pattern Recognition Letters 27, 861–874. DOI: doi: 10.1016/j.patrec.2005.10.010. (for roc, auc)
+#' @references Xavier Robin, Natacha Turck, Alexandre Hainard, et al. (2011) “pROC: an open-source package for R and S+ to analyze and compare ROC curves”. BMC Bioinformatics, 7, 77. DOI: doi: 10.1186/1471-2105-12-77. (for roc, auc, ci)
+#' @references David J. Hand and Robert J. Till (2001). A Simple Generalisation of the Area Under the ROC Curve for Multiple Class Classification Problems. Machine Learning 45(2), p. 171–186. DOI: doi: 10.1023/A:1010920819831. (for auc)
+#' @references Donna Katzman McClish (1989) “Analyzing a Portion of the ROC Curve”. Medical Decision Making 9(3), 190–195. DOI: doi: 10.1177/0272989X8900900307. (for auc)
+#' @references Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for median)
 #'
 #' @export
 perform_AUROC <- function(
@@ -308,8 +315,8 @@ perform_AUROC <- function(
     stop("data_PP must contain $Metadata$Group")
   }
 
-  if (is.null(data_PP$data_scaledPCA_rsdFiltered_varFiltered)) {
-    stop("data_PP must contain $data_scaledPCA_rsdFiltered_varFiltered")
+  if (is.null(data_PP$data_scaledPCA_varFiltered)) {
+    stop("data_PP must contain $data_scaledPCA_varFiltered")
   }
 
   # Check data_CA structure
@@ -353,6 +360,21 @@ perform_AUROC <- function(
   # Validate arrangeLevels if provided
   if (!is.null(arrangeLevels) && !is.character(arrangeLevels)) {
     stop("arrangeLevels must be a character vector or NULL")
+  }
+
+  # Check for data matrix - handle both merged and non-merged cases
+  has_varFiltered <- !is.null(data_PP$data_scaledPCA_varFiltered)
+  has_merged <- !is.null(data_PP$data_scaledPCA_merged)
+  auto_merge_replicates <- isTRUE(data_PP$Parameters$auto_merge_replicates)
+
+  if (auto_merge_replicates) {
+    if (!has_merged) {
+      stop("data_PP$Parameters$auto_merge_replicates is TRUE but data_PP$data_scaledPCA_merged is missing")
+    }
+  } else {
+    if (!has_varFiltered) {
+      stop("data_PP$Parameters$auto_merge_replicates is FALSE but data_PP$data_scaledPCA_varFiltered is missing")
+    }
   }
 }
 
@@ -488,32 +510,70 @@ perform_AUROC <- function(
   return(filtered_data)
 }
 
+# REPLACED WITH UPDATED CODES BELOW
+
+# #' Prepare feature data matrix for AUROC analysis
+# #' @keywords internal
+# .prepare_feature_data <- function(data_PP, feature_names, groups, non_qc_indices) {
+#
+#   # Get the data matrix
+#   data_matrix <- data_PP$data_scaledPCA_varFiltered[non_qc_indices, , drop = FALSE]
+#
+#   # Check which features are available
+#   available_features <- intersect(feature_names, colnames(data_matrix))
+#
+#   if (length(available_features) == 0) {
+#     stop("No requested features found in data matrix")
+#   }
+#
+#  if (length(available_features) < length(feature_names)) {
+#    missing_features <- setdiff(feature_names, available_features)
+#     warning("Some features not found in data matrix: ",
+#             paste(missing_features, collapse = ", "))
+#   }
+#
+#   # Create feature data with groups
+#   feature_data <- data_matrix %>%
+#     dplyr::select(dplyr::any_of(available_features)) %>%
+#     cbind(Groups = groups, .)
+#
+#   return(feature_data)
+# }
+
 #' Prepare feature data matrix for AUROC analysis
 #' @keywords internal
 .prepare_feature_data <- function(data_PP, feature_names, groups, non_qc_indices) {
 
-  # Get the data matrix
-  data_matrix <- data_PP$data_scaledPCA_rsdFiltered_varFiltered[non_qc_indices, , drop = FALSE]
+  tryCatch({
+    # Get the appropriate data matrix based on auto_merge_replicates setting
+    data_matrix <- .get_data_matrix_AUROC(data_PP)
 
-  # Check which features are available
-  available_features <- intersect(feature_names, colnames(data_matrix))
+    # Apply non-QC indices filtering
+    data_matrix <- data_matrix[non_qc_indices, , drop = FALSE]
 
-  if (length(available_features) == 0) {
-    stop("No requested features found in data matrix")
-  }
+    # Check which features are available
+    available_features <- intersect(feature_names, colnames(data_matrix))
 
-  if (length(available_features) < length(feature_names)) {
-    missing_features <- setdiff(feature_names, available_features)
-    warning("Some features not found in data matrix: ",
-            paste(missing_features, collapse = ", "))
-  }
+    if (length(available_features) == 0) {
+      stop("No requested features found in data matrix")
+    }
 
-  # Create feature data with groups
-  feature_data <- data_matrix %>%
-    dplyr::select(dplyr::any_of(available_features)) %>%
-    cbind(Groups = groups, .)
+    if (length(available_features) < length(feature_names)) {
+      missing_features <- setdiff(feature_names, available_features)
+      warning("Some features not found in data matrix: ",
+              paste(missing_features, collapse = ", "))
+    }
 
-  return(feature_data)
+    # Create feature data with groups
+    feature_data <- data_matrix %>%
+      dplyr::select(dplyr::any_of(available_features)) %>%
+      cbind(Groups = groups, .)
+
+    return(feature_data)
+
+  }, error = function(e) {
+    stop("Error preparing feature data: ", e$message)
+  })
 }
 
 #' Perform AUROC analysis for filtered features
@@ -538,20 +598,12 @@ perform_AUROC <- function(
   for (feature_name in feature_names) {
 
     tryCatch({
-      # Determine direction for ROC
-      roc_direction <- direction
-      # if (direction == "auto") {
-      #   median_group1 <- median(feature_data[[feature_name]][feature_data$Groups == group1], na.rm = TRUE)
-      #   median_group2 <- median(feature_data[[feature_name]][feature_data$Groups == group2], na.rm = TRUE)
-      #   roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
-      # }
-
       # Compute ROC curve
       roc_obj <- pROC::roc(
         response = feature_data$Groups,
         predictor = feature_data[[feature_name]],
         levels = c(group1, group2),
-        direction = roc_direction,
+        direction = direction,
         quiet = TRUE
       )
 
@@ -581,7 +633,7 @@ perform_AUROC <- function(
   return(auroc_df)
 }
 
-#' Create ROC plot for top features
+#' Create ROC plot for top features - FIXED AXES
 #' @keywords internal
 .create_roc_plot <- function(feature_data, auroc_df, group1, group2, group_name,
                              direction, top_n) {
@@ -613,31 +665,23 @@ perform_AUROC <- function(
     ci_low <- top_features$CI_Lower[i]
     ci_up <- top_features$CI_Upper[i]
 
-    # Determine direction for this curve
-    roc_direction <- direction
-    if (direction == "auto") {
-      median_group1 <- median(feature_data[[feature]][feature_data$Groups == group1], na.rm = TRUE)
-      median_group2 <- median(feature_data[[feature]][feature_data$Groups == group2], na.rm = TRUE)
-      roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
-    }
-
     # Compute ROC
     roc_obj <- pROC::roc(
       response = feature_data$Groups,
       predictor = feature_data[[feature]],
       levels = c(group1, group2),
-      direction = roc_direction,
+      direction = direction,
       quiet = TRUE
     )
 
-    # Create ROC data frame
+    # Create ROC data frame - FIXED: Correct axes assignment and sorting by x-axis
     roc_df <- data.frame(
-      x = roc_obj$sensitivities,
-      y = 1 - roc_obj$specificities,
+      x = 1 - roc_obj$specificities,  # 1-Specificity on x-axis
+      y = roc_obj$sensitivities,      # Sensitivity on y-axis
       Feature = sprintf("%s (AUC = %.3f) (95%% CI: %.3f-%.3f)",
                         feature, auc_val, ci_low, ci_up)
     ) %>%
-      dplyr::arrange(y)
+      dplyr::arrange(x, y)  # Sort by x-axis (1-Specificity) then y-axis for smooth curves
 
     # Add to plot
     gg_roc <- gg_roc +
@@ -659,18 +703,22 @@ perform_AUROC <- function(
   legend_data <- legend_data %>%
     dplyr::arrange(dplyr::desc(AUC))
 
-  # Finalize plot
+  # Finalize plot - FIXED: Correct axis labels and reference line
   final_plot <- gg_roc +
+    ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
+                         color = "gray50", size = 0.8) +  # Reference line
     ggplot2::scale_color_manual(
       values = colors,
       breaks = legend_data$Feature
     ) +
     ggplot2::labs(
       title = sprintf("Top %d Features' ROC Curves - %s", min(top_n, nrow(top_features)), group_name),
-      x = "Sensitivity",
-      y = "1 - Specificity",
+      x = "1 - Specificity (False Positive Rate)",  # FIXED: Correct x-axis label
+      y = "Sensitivity (True Positive Rate)",       # FIXED: Correct y-axis label
       color = "Feature (AUC, 95% CI)"
     ) +
+    ggplot2::xlim(0, 1) +
+    ggplot2::ylim(0, 1) +
     ggplot2::theme_minimal() +
     ggplot2::theme(
       legend.position = c(0.8, 0.2),
@@ -682,7 +730,7 @@ perform_AUROC <- function(
   return(final_plot)
 }
 
-#' Create individual plots for specified metabolites
+#' Create individual plots for specified metabolites - FIXED AXES
 #' @keywords internal
 .create_individual_plots <- function(data_PP, data_DR, data_FC, data_CA, plot_iden_met,
                                      group1, group2, group_name, groups, non_qc_indices,
@@ -706,7 +754,7 @@ perform_AUROC <- function(
       return(individual_plots)
     }
 
-    # Prepare data matrix
+    # Prepare data matrix - UPDATED CALL
     feature_data <- .prepare_feature_data(data_PP, available_metabolites,
                                           groups, non_qc_indices)
 
@@ -714,20 +762,12 @@ perform_AUROC <- function(
     for (metabolite in available_metabolites) {
 
       tryCatch({
-        # Determine direction for ROC
-        roc_direction <- direction
-        if (direction == "auto") {
-          median_group1 <- median(feature_data[[metabolite]][feature_data$Groups == group1], na.rm = TRUE)
-          median_group2 <- median(feature_data[[metabolite]][feature_data$Groups == group2], na.rm = TRUE)
-          roc_direction <- ifelse(median_group1 < median_group2, ">", "<")
-        }
-
         # Compute ROC
         roc_obj <- pROC::roc(
           response = feature_data$Groups,
           predictor = feature_data[[metabolite]],
           levels = c(group1, group2),
-          direction = roc_direction,
+          direction = direction,
           quiet = TRUE
         )
 
@@ -735,17 +775,19 @@ perform_AUROC <- function(
         auc_val <- as.numeric(pROC::auc(roc_obj))
         ci_vals <- as.numeric(pROC::ci(roc_obj, conf.level = confidence_level))
 
-        # Create plot data
+        # Create plot data - FIXED: Correct axes assignment and sorting by x-axis
         roc_df <- data.frame(
-          x = roc_obj$sensitivities,
-          y = 1 - roc_obj$specificities,
+          x = 1 - roc_obj$specificities,  # 1-Specificity on x-axis
+          y = roc_obj$sensitivities,      # Sensitivity on y-axis
           Label = sprintf("%s (AUC = %.3f, 95%% CI: %.3f-%.3f)",
                           metabolite, auc_val, ci_vals[1], ci_vals[3])
         ) %>%
-          dplyr::arrange(y)
+          dplyr::arrange(x, y)  # Sort by x-axis (1-Specificity) then y-axis for smooth curves
 
-        # Create plot
+        # Create plot - FIXED: Correct axis labels and reference line
         individual_plot <- ggplot2::ggplot() +
+          ggplot2::geom_abline(intercept = 0, slope = 1, linetype = "dashed",
+                               color = "gray50", size = 0.8) +  # Reference line
           ggplot2::geom_line(
             data = roc_df,
             ggplot2::aes(x = x, y = y, color = Label),
@@ -753,10 +795,12 @@ perform_AUROC <- function(
           ) +
           ggplot2::labs(
             title = sprintf("ROC Curve - %s", group_name),
-            x = "Sensitivity",
-            y = "1 - Specificity",
+            x = "1 - Specificity (False Positive Rate)",  # FIXED: Correct x-axis label
+            y = "Sensitivity (True Positive Rate)",       # FIXED: Correct y-axis label
             color = "Metabolite (AUC, 95% CI)"
           ) +
+          ggplot2::xlim(0, 1) +
+          ggplot2::ylim(0, 1) +
           ggplot2::theme_minimal() +
           ggplot2::theme(
             legend.position = "bottom",
@@ -781,6 +825,287 @@ perform_AUROC <- function(
 }
 
 # Additional Utility Functions --------------------------------------------
+
+#' Extract AUROC Results
+#'
+#' @description
+#' Extract comprehensive AUROC results from perform_AUROC output including
+#' feature names, AUC values, confidence intervals, and additional metrics.
+#' This function provides flexible options to extract results for specific
+#' comparisons or all comparisons, with optional filtering and sorting.
+#'
+#' @param auroc_results List. Results from the \code{perform_AUROC} function.
+#' @param comparison Character vector or NULL. Specific group comparison(s) to extract
+#'   (e.g., \code{c("Case1 vs. Control", "Case2 vs. Control")}). If NULL, extracts
+#'   all comparisons. Default: NULL.
+#' @param min_auc Numeric. Minimum AUC threshold for filtering results.
+#'   Features with AUC < min_auc are excluded. Default: 0 (no filtering).
+#' @param max_auc Numeric. Maximum AUC threshold for filtering results.
+#'   Features with AUC > max_auc are excluded. Default: 1 (no filtering).
+#' @param top_n Integer or NULL. Number of top features (by AUC) to return per
+#'   comparison. If NULL, returns all features. Default: NULL.
+#' @param include_merged_data Logical. Whether to include merged data (VIP, fold
+#'   change, statistical results) for each comparison. Default: FALSE.
+#' @param sort_by Character. Sorting criteria for results. Options:
+#'   \itemize{
+#'     \item \code{"auc_desc"}: Sort by AUC descending (highest first)
+#'     \item \code{"auc_asc"}: Sort by AUC ascending (lowest first)
+#'     \item \code{"feature"}: Sort by feature name alphabetically
+#'     \item \code{"comparison"}: Sort by comparison name alphabetically
+#'   }
+#'   Default: "auc_desc".
+#'
+#' @return A list containing the following components:
+#'   \itemize{
+#'     \item \code{results}: Data frame with AUROC results including Feature,
+#'       Group_Comparison, AUROC, CI_Lower, CI_Upper, and additional metrics
+#'     \item \code{summary}: Summary statistics for extracted results
+#'     \item \code{parameters}: Parameters used for extraction
+#'     \item \code{merged_data}: List of merged data frames for each comparison
+#'       (if \code{include_merged_data = TRUE})
+#'   }
+#'
+#' @details
+#' The extracted results data frame includes:
+#' \enumerate{
+#'   \item Feature: Metabolite/feature name
+#'   \item Group_Comparison: Comparison groups (e.g., "Case vs. Control")
+#'   \item AUROC: Area Under the ROC Curve value
+#'   \item CI_Lower: Lower bound of confidence interval
+#'   \item CI_Upper: Upper bound of confidence interval
+#'   \item CI_Width: Width of confidence interval (CI_Upper - CI_Lower)
+#'   \item Performance_Category: Categorical assessment of AUC performance
+#' }
+#'
+#' Performance categories:
+#' \itemize{
+#'   \item "Excellent" (AUC ≥ 0.9)
+#'   \item "Good" (0.8 ≤ AUC < 0.9)
+#'   \item "Fair" (0.7 ≤ AUC < 0.8)
+#'   \item "Poor" (0.6 ≤ AUC < 0.7)
+#'   \item "Fail" (AUC < 0.6)
+#' }
+#'
+#' @author John Lennon L. Calorio
+#'
+#' @examples
+#' \dontrun{
+#' # Extract all AUROC results
+#' all_results <- extract_auroc_results(auroc_results)
+#'
+#' # Extract results for specific comparison
+#' case_results <- extract_auroc_results(
+#'   auroc_results,
+#'   comparison = "Case vs. Control"
+#' )
+#'
+#' # Extract top 10 features with AUC > 0.7
+#' top_results <- extract_auroc_results(
+#'   auroc_results,
+#'   min_auc = 0.7,
+#'   top_n = 10,
+#'   include_merged_data = TRUE
+#' )
+#'
+#' # Extract results sorted by feature name
+#' sorted_results <- extract_auroc_results(
+#'   auroc_results,
+#'   sort_by = "feature"
+#' )
+#' }
+#'
+#' @seealso \code{\link{perform_AUROC}}, \code{\link{get_auroc_summary}}
+#'
+#' @export
+extract_auroc_results <- function(
+    auroc_results,
+    comparison = NULL,
+    min_auc = 0,
+    max_auc = 1,
+    top_n = NULL,
+    include_merged_data = FALSE,
+    sort_by = "auc_desc"
+) {
+
+  # Validate inputs
+  if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
+    stop("Input must be results from perform_AUROC function")
+  }
+
+  # Validate parameters
+  if (!is.numeric(min_auc) || !is.numeric(max_auc) || min_auc < 0 || max_auc > 1 || min_auc >= max_auc) {
+    stop("min_auc and max_auc must be numeric values between 0 and 1, with min_auc < max_auc")
+  }
+
+  if (!is.null(top_n) && (!is.numeric(top_n) || length(top_n) != 1 || top_n < 1 || top_n != round(top_n))) {
+    stop("top_n must be a positive integer or NULL")
+  }
+
+  if (!sort_by %in% c("auc_desc", "auc_asc", "feature", "comparison")) {
+    stop("sort_by must be one of: 'auc_desc', 'auc_asc', 'feature', 'comparison'")
+  }
+
+  # Find all AUROC result data frames
+  result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
+
+  if (length(result_names) == 0) {
+    warning("No AUROC results found")
+    return(list(
+      results = data.frame(),
+      summary = list(),
+      parameters = list(),
+      merged_data = list()
+    ))
+  }
+
+  # Filter by specific comparisons if requested
+  if (!is.null(comparison)) {
+    comparison_names <- paste0("data_results_", comparison)
+    valid_comparisons <- intersect(comparison_names, result_names)
+
+    if (length(valid_comparisons) == 0) {
+      stop("None of the specified comparisons found in results. Available comparisons: ",
+           paste(gsub("^data_results_", "", result_names), collapse = ", "))
+    }
+
+    result_names <- valid_comparisons
+
+    # Check for invalid comparisons
+    invalid_comparisons <- setdiff(comparison_names, result_names)
+    if (length(invalid_comparisons) > 0) {
+      warning("Some specified comparisons not found: ",
+              paste(gsub("^data_results_", "", invalid_comparisons), collapse = ", "))
+    }
+  }
+
+  # Extract and combine all results
+  all_results <- data.frame()
+  merged_data_list <- list()
+
+  for (result_name in result_names) {
+    comparison_name <- gsub("^data_results_", "", result_name)
+    result_df <- auroc_results[[result_name]]
+
+    if (!is.null(result_df) && nrow(result_df) > 0) {
+      all_results <- rbind(all_results, result_df)
+
+      # Include merged data if requested
+      if (include_merged_data) {
+        merged_name <- paste0("data_Merged_", comparison_name)
+        if (!is.null(auroc_results[[merged_name]])) {
+          merged_data_list[[comparison_name]] <- auroc_results[[merged_name]]
+        }
+      }
+    }
+  }
+
+  if (nrow(all_results) == 0) {
+    warning("No valid AUROC results found for specified comparisons")
+    return(list(
+      results = data.frame(),
+      summary = list(),
+      parameters = list(),
+      merged_data = list()
+    ))
+  }
+
+  # Apply AUC filtering
+  filtered_results <- all_results[all_results$AUROC >= min_auc & all_results$AUROC <= max_auc, ]
+
+  if (nrow(filtered_results) == 0) {
+    warning("No results pass the AUC filtering criteria (min_auc: ", min_auc, ", max_auc: ", max_auc, ")")
+    return(list(
+      results = data.frame(),
+      summary = list(),
+      parameters = list(),
+      merged_data = merged_data_list
+    ))
+  }
+
+  # Add additional calculated columns
+  filtered_results$CI_Width <- filtered_results$CI_Upper - filtered_results$CI_Lower
+
+  # Add performance category
+  filtered_results$Performance_Category <- cut(
+    filtered_results$AUROC,
+    breaks = c(0, 0.6, 0.7, 0.8, 0.9, 1.0),
+    labels = c("Fail", "Poor", "Fair", "Good", "Excellent"),
+    include.lowest = TRUE,
+    right = FALSE
+  )
+
+  # Apply sorting
+  filtered_results <- switch(sort_by,
+                             "auc_desc" = filtered_results[order(-filtered_results$AUROC), ],
+                             "auc_asc" = filtered_results[order(filtered_results$AUROC), ],
+                             "feature" = filtered_results[order(filtered_results$Feature), ],
+                             "comparison" = filtered_results[order(filtered_results$Group_Comparison, -filtered_results$AUROC), ]
+  )
+
+  # Apply top_n filtering per comparison if specified
+  if (!is.null(top_n)) {
+    if (sort_by %in% c("feature", "comparison")) {
+      # For non-AUC sorting, need to sort by AUC within each comparison first
+      filtered_results <- do.call(rbind, lapply(split(filtered_results, filtered_results$Group_Comparison), function(df) {
+        df_sorted <- df[order(-df$AUROC), ]
+        head(df_sorted, min(top_n, nrow(df_sorted)))
+      }))
+
+      # Re-apply original sorting
+      filtered_results <- switch(sort_by,
+                                 "feature" = filtered_results[order(filtered_results$Feature), ],
+                                 "comparison" = filtered_results[order(filtered_results$Group_Comparison, -filtered_results$AUROC), ]
+      )
+    } else {
+      # For AUC-based sorting, apply top_n per comparison
+      filtered_results <- do.call(rbind, lapply(split(filtered_results, filtered_results$Group_Comparison), function(df) {
+        head(df, min(top_n, nrow(df)))
+      }))
+    }
+  }
+
+  # Reset row names
+  rownames(filtered_results) <- NULL
+
+  # Calculate summary statistics
+  summary_stats <- list(
+    total_features = nrow(filtered_results),
+    unique_comparisons = length(unique(filtered_results$Group_Comparison)),
+    comparisons = unique(filtered_results$Group_Comparison),
+    auc_statistics = list(
+      mean = mean(filtered_results$AUROC, na.rm = TRUE),
+      median = median(filtered_results$AUROC, na.rm = TRUE),
+      min = min(filtered_results$AUROC, na.rm = TRUE),
+      max = max(filtered_results$AUROC, na.rm = TRUE),
+      sd = sd(filtered_results$AUROC, na.rm = TRUE)
+    ),
+    performance_distribution = table(filtered_results$Performance_Category),
+    ci_width_statistics = list(
+      mean = mean(filtered_results$CI_Width, na.rm = TRUE),
+      median = median(filtered_results$CI_Width, na.rm = TRUE),
+      min = min(filtered_results$CI_Width, na.rm = TRUE),
+      max = max(filtered_results$CI_Width, na.rm = TRUE)
+    )
+  )
+
+  # Store extraction parameters
+  extraction_params <- list(
+    comparison = comparison,
+    min_auc = min_auc,
+    max_auc = max_auc,
+    top_n = top_n,
+    include_merged_data = include_merged_data,
+    sort_by = sort_by,
+    extraction_timestamp = Sys.time()
+  )
+
+  return(list(
+    results = filtered_results,
+    summary = summary_stats,
+    parameters = extraction_params,
+    merged_data = merged_data_list
+  ))
+}
 
 #' Get AUROC summary statistics
 #'
@@ -823,63 +1148,6 @@ get_auroc_summary <- function(auroc_results) {
 
   return(summary_stats)
 }
-
-# #' Export AUROC results to file
-# #'
-# #' @description Export AUROC analysis results to CSV files
-# #' @param auroc_results List returned by perform_AUROC
-# #' @param output_dir Character. Directory to save results
-# #' @param file_prefix Character. Prefix for output files
-# #' @return Invisible NULL
-# #' @export
-# export_auroc_results <- function(auroc_results, output_dir = ".", file_prefix = "AUROC") {
-#
-#   if (!"perform_AUROC" %in% auroc_results$FunctionOrigin) {
-#     stop("Input must be results from perform_AUROC function")
-#   }
-#
-#   # Create output directory if it doesn't exist
-#   if (!dir.exists(output_dir)) {
-#     dir.create(output_dir, recursive = TRUE)
-#   }
-#
-#   # Export summary
-#   summary_stats <- get_auroc_summary(auroc_results)
-#   if (nrow(summary_stats) > 0) {
-#     utils::write.csv(summary_stats,
-#                      file.path(output_dir, paste0(file_prefix, "_summary.csv")),
-#                      row.names = FALSE)
-#   }
-#
-#   # Export individual comparison results
-#   result_names <- names(auroc_results)[grepl("^data_results_", names(auroc_results))]
-#
-#   for (name in result_names) {
-#     comparison <- gsub("^data_results_", "", name)
-#     safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
-#     filename <- paste0(file_prefix, "_", safe_comparison, ".csv")
-#
-#     utils::write.csv(auroc_results[[name]],
-#                      file.path(output_dir, filename),
-#                      row.names = FALSE)
-#   }
-#
-#   # Export merged data
-#   merged_names <- names(auroc_results)[grepl("^data_Merged_", names(auroc_results))]
-#
-#   for (name in merged_names) {
-#     comparison <- gsub("^data_Merged_", "", name)
-#     safe_comparison <- gsub("[^A-Za-z0-9_]", "_", comparison)
-#     filename <- paste0(file_prefix, "_merged_", safe_comparison, ".csv")
-#
-#     utils::write.csv(auroc_results[[name]],
-#                      file.path(output_dir, filename),
-#                      row.names = FALSE)
-#   }
-#
-#   message("AUROC results exported to: ", output_dir)
-#   invisible(NULL)
-# }
 
 #' Plot AUROC distribution
 #'
@@ -933,4 +1201,23 @@ plot_auroc_distribution <- function(auroc_results, bins = 20) {
     )
 
   return(p)
+}
+
+#' Get appropriate data matrix based on auto_merge_replicates setting
+#' @keywords internal
+.get_data_matrix_AUROC <- function(data_PP) {
+
+  auto_merge_replicates <- isTRUE(data_PP$Parameters$auto_merge_replicates)
+
+  if (auto_merge_replicates) {
+    if (is.null(data_PP$data_scaledPCA_merged)) {
+      stop("auto_merge_replicates is TRUE but data_scaledPCA_merged is not available")
+    }
+    return(data_PP$data_scaledPCA_merged)
+  } else {
+    if (is.null(data_PP$data_scaledPCA_varFiltered)) {
+      stop("auto_merge_replicates is FALSE but data_scaledPCA_varFiltered is not available")
+    }
+    return(data_PP$data_scaledPCA_varFiltered)
+  }
 }
