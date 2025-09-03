@@ -6,6 +6,8 @@
 #' will produce a separate scores plot.
 #'
 #' @param data List. This list must be a result from the `perform_PreprocessingPeakData` function.
+#'   The function will automatically detect if replicates were merged during preprocessing
+#'   and use the appropriate data matrix.
 #' @param scorePC List. A list of 2-element numeric vectors, where each vector specifies
 #'   the principal components to plot. For example: list(c(1,2), c(1,3), c(2,3))
 #'   will generate 3 plots: PC1 vs PC2, PC1 vs PC3, and PC2 vs PC3.
@@ -51,6 +53,10 @@
 #' @importFrom stats complete.cases
 #' @importFrom utils getFromNamespace
 #'
+#' @references Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for prcomp)
+#' @references Mardia, K. V., J. T. Kent, and J. M. Bibby (1979) Multivariate Analysis, London: Academic Press. (for prcomp)
+#' @references Venables, W. N. and B. D. Ripley (2002) Modern Applied Statistics with S, Springer-Verlag. (for prcomp)
+#'
 #' @examples
 #' \dontrun{
 #' # Generate 3 different scores plots plus scree plot
@@ -70,7 +76,7 @@
 #' scree <- multi_plots$scree_plot  # Scree plot
 #'
 #' # Display all plots
-#' display_AllPlots(multi_plots, include_scree = TRUE)
+#' plot_PCAScreeScores(multi_plots, include_scree = TRUE)
 #' }
 perform_PCA <- function(
     data,
@@ -205,6 +211,17 @@ perform_PCA <- function(
     screeShowCumulative <- FALSE
   }
 
+  # Check if auto_merge_replicates parameter exists (for backward compatibility)
+  if (is.null(data$Parameters$auto_merge_replicates)) {
+    auto_merge_replicates <- FALSE
+    warning("auto_merge_replicates parameter not found in data. Using default value FALSE for backward compatibility.")
+  } else {
+    auto_merge_replicates <- data$Parameters$auto_merge_replicates
+    if (!is.logical(auto_merge_replicates) || length(auto_merge_replicates) != 1) {
+      stop("data$Parameters$auto_merge_replicates must be a single logical value (TRUE or FALSE).")
+    }
+  }
+
   # ============================================================================
   # DATA PREPARATION AND PCA
   # ============================================================================
@@ -215,7 +232,7 @@ perform_PCA <- function(
 
   # Determine which samples to use based on includeQC parameter
   if (includeQC) {
-    sample_indices <- rep(TRUE, nrow(data$data_scaledPCA_rsdFiltered_varFiltered))
+    sample_indices <- rep(TRUE, nrow(data$data_scaledPCA_varFiltered))
     sample_type <- "All samples (QC + Biological)"
   } else {
     sample_indices <- non_qc_indices
@@ -227,32 +244,93 @@ perform_PCA <- function(
     stop("No samples available for analysis with the current settings.")
   }
 
-  # Select appropriate filtered data
-  if (is.null(data$data_scaledPCA_rsdFiltered_varFiltered) ||
-      length(data$data_scaledPCA_rsdFiltered_varFiltered) == 0) {
-    stop("The preprocessed data does not exist or does not have any data on it.")
-  } else {
-    data_pca <- data$data_scaledPCA_rsdFiltered_varFiltered[sample_indices, , drop = FALSE]
-  }
+  # NEW FUNCTION BELOW THIS
 
-  # Check if we have enough samples and variables for PCA
-  if (nrow(data_pca) < 2) {
-    stop("Need at least 2 samples to perform PCA.")
-  }
+  # # Select appropriate filtered data
+  # if (is.null(data$data_scaledPCA_varFiltered) ||
+  #     length(data$data_scaledPCA_varFiltered) == 0) {
+  #   stop("The preprocessed data does not exist or does not have any data on it.")
+  # } else {
+  #   data_pca <- data$data_scaledPCA_varFiltered[sample_indices, , drop = FALSE]
+  # }
+  #
+  # # Check if we have enough samples and variables for PCA
+  # if (nrow(data_pca) < 2) {
+  #   stop("Need at least 2 samples to perform PCA.")
+  # }
+  #
+  # if (ncol(data_pca) < 2) {
+  #   stop("Need at least 2 variables to perform PCA.")
+  # }
+  #
+  # # Check for missing values
+  # if (any(is.na(data_pca))) {
+  #   warning("Missing values detected in data. Consider additional preprocessing.")
+  #   # Remove columns with any missing values for PCA
+  #   data_pca <- data_pca[, complete.cases(t(data_pca)), drop = FALSE]
+  #   if (ncol(data_pca) < 2) {
+  #     stop("After removing missing values, insufficient variables remain for PCA.")
+  #   }
+  # }
 
-  if (ncol(data_pca) < 2) {
-    stop("Need at least 2 variables to perform PCA.")
-  }
-
-  # Check for missing values
-  if (any(is.na(data_pca))) {
-    warning("Missing values detected in data. Consider additional preprocessing.")
-    # Remove columns with any missing values for PCA
-    data_pca <- data_pca[, complete.cases(t(data_pca)), drop = FALSE]
-    if (ncol(data_pca) < 2) {
-      stop("After removing missing values, insufficient variables remain for PCA.")
+  # Select appropriate filtered data based on auto_merge_replicates parameter
+  if (auto_merge_replicates) {
+    # Use merged data
+    if (is.null(data$data_scaledPCA_merged) || length(data$data_scaledPCA_merged) == 0) {
+      stop("auto_merge_replicates is TRUE but data$data_scaledPCA_merged does not exist or is empty. ",
+           "Ensure the preprocessing function was run with auto_merge_replicates=TRUE.")
     }
+
+    # Check if merged data has corresponding metadata
+    if (is.null(data$Metadata_merged) || nrow(data$Metadata_merged) == 0) {
+      stop("auto_merge_replicates is TRUE but data$Metadata_merged does not exist or is empty.")
+    }
+
+    # Validate dimensions match
+    if (nrow(data$data_scaledPCA_merged) != nrow(data$Metadata_merged)) {
+      stop("Dimension mismatch: data_scaledPCA_merged has ", nrow(data$data_scaledPCA_merged),
+           " rows but Metadata_merged has ", nrow(data$Metadata_merged), " rows.")
+    }
+
+    # Use merged data and metadata
+    full_data <- data$data_scaledPCA_merged
+    metadata_full <- data$Metadata_merged
+    data_source <- "merged"
+
+  } else {
+    # Use filtered data (original behavior)
+    if (is.null(data$data_scaledPCA_varFiltered) || length(data$data_scaledPCA_varFiltered) == 0) {
+      stop("The preprocessed data does not exist or does not have any data on it.")
+    }
+
+    # Use original data and metadata
+    full_data <- data$data_scaledPCA_varFiltered
+    metadata_full <- data$Metadata
+    data_source <- "filtered"
   }
+
+  # Determine QC and biological sample indices based on selected metadata
+  qc_indices <- metadata_full$Group %in% c("SQC", "EQC", "QC")
+  non_qc_indices <- !qc_indices
+
+  # Determine which samples to use based on includeQC parameter
+  if (includeQC) {
+    sample_indices <- rep(TRUE, nrow(full_data))
+    sample_type <- paste0("All samples (QC + Biological) - ", data_source, " data")
+  } else {
+    sample_indices <- non_qc_indices
+    sample_type <- paste0("Biological samples only - ", data_source, " data")
+  }
+
+  # Validate that we have samples to analyze
+  if (sum(sample_indices) == 0) {
+    stop("No samples available for analysis with the current settings.")
+  }
+
+  # Select final data for PCA
+  data_pca <- full_data[sample_indices, , drop = FALSE]
+
+  ## [NEW FUNCTION UNTIL HERE]
 
   # Perform PCA with error handling
   pca_res <- tryCatch({
@@ -414,8 +492,35 @@ perform_PCA <- function(
     stringsAsFactors = FALSE
   )
 
+  # NEW CODE BELOW
+
+  # # Prepare scores data based on sample selection
+  # metadata_subset <- data$Metadata[sample_indices, , drop = FALSE]
+  #
+  # if (includeQC) {
+  #   qc_subset <- qc_indices[sample_indices]
+  #   combined_groups <- ifelse(qc_subset,
+  #                             paste0("QC_", metadata_subset$Group),
+  #                             as.character(metadata_subset$Group))
+  #   base_scores_df <- data.frame(
+  #     Group = combined_groups,
+  #     Batch = metadata_subset$Batch,
+  #     Label = rownames(data_pca),
+  #     SampleType = ifelse(qc_subset, "QC", "Biological"),
+  #     stringsAsFactors = FALSE
+  #   )
+  # } else {
+  #   base_scores_df <- data.frame(
+  #     Group = metadata_subset$Group,
+  #     Batch = metadata_subset$Batch,
+  #     Label = rownames(data_pca),
+  #     SampleType = "Biological",
+  #     stringsAsFactors = FALSE
+  #   )
+  # }
+
   # Prepare scores data based on sample selection
-  metadata_subset <- data$Metadata[sample_indices, , drop = FALSE]
+  metadata_subset <- metadata_full[sample_indices, , drop = FALSE]
 
   if (includeQC) {
     qc_subset <- qc_indices[sample_indices]
@@ -554,6 +659,7 @@ perform_PCA <- function(
   # ============================================================================
 
   results <- list(
+    data_source = data_source,
     plots = plots_list,
     scree_plot = scree_plot,
     plot_info = plot_info,
@@ -578,6 +684,8 @@ print.multipleScoresPlots <- function(x, ...) {
   cat("================================\n")
   cat("Number of scores plots:", length(x$plots), "\n")
   cat("Scree plot included:", ifelse(x$scree_included && !is.null(x$scree_plot), "Yes", "No"), "\n")
+  # cat("Sample type:", x$sample_type, "\n")
+  cat("Data source:", x$data_source, "\n")
   cat("Sample type:", x$sample_type, "\n")
   cat("Total variance explained by all PCs:", round(sum(x$variance_explained), 1), "%\n")
   cat("PC combinations:\n")
@@ -591,7 +699,7 @@ print.multipleScoresPlots <- function(x, ...) {
     cat("Use $scree_plot to access the scree plot\n")
   }
   cat("Use $plot_info for detailed information about each plot\n")
-  cat("Use display_AllPlots() to show all plots at once\n")
+  cat("Use plot_PCAScreeScores() to show all plots at once\n")
 }
 
 # Enhanced helper function to display all plots at once
@@ -604,7 +712,7 @@ print.multipleScoresPlots <- function(x, ...) {
 #' @param ncol Number of columns in the plot arrangement (default: 2)
 #' @param nrow Number of rows in the plot arrangement (default: NULL, auto-calculated)
 #' @export
-display_AllPlots <- function(multi_plots_obj, arrange = TRUE, include_scree = TRUE, ncol = 2, nrow = NULL) {
+plot_PCAScreeScores <- function(multi_plots_obj, arrange = TRUE, include_scree = TRUE, ncol = 2, nrow = NULL) {
   if (!inherits(multi_plots_obj, "multipleScoresPlots")) {
     stop("Object must be created by perform_PCA() function")
   }
@@ -651,7 +759,7 @@ display_AllPlots <- function(multi_plots_obj, arrange = TRUE, include_scree = TR
 #' @param max_pc Integer. Maximum number of PCs to include. If NULL, includes all.
 #' @return Data frame with PC information
 #' @export
-getScreeData <- function(multi_plots_obj, what = "variance", max_pc = NULL) {
+get_ScreeData <- function(multi_plots_obj, what = "variance", max_pc = NULL) {
   if (!inherits(multi_plots_obj, "multipleScoresPlots")) {
     stop("Object must be created by perform_PCA() function")
   }
