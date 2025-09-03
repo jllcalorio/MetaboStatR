@@ -99,6 +99,29 @@
 #'
 #' @importFrom stats aov bartlett.test kruskal.test lm p.adjust sd shapiro.test t.test var var.test wilcox.test
 #'
+#' @references Bartlett, M. S. (1937). Properties of sufficiency and statistical tests. Proceedings of the Royal Society of London Series A 160, 268–282. doi:10.1098/rspa.1937.0109. (for bartlett.test)
+#' @references David F. Bauer (1972). Constructing confidence sets using rank statistics. Journal of the American Statistical Association 67, 687–690. doi:10.1080/01621459.1972.10481279. (for wilcox.test)
+#' @references Myles Hollander and Douglas A. Wolfe (1973). Nonparametric Statistical Methods. New York: John Wiley & Sons. Pages 27–33 (one-sample), 68–75 (two-sample). Or second edition (1999). (for wilcox.test)
+#' @references Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988). The New S Language. Wadsworth & Brooks/Cole. (for var)
+#' @references Kendall, M. G. (1938). A new measure of rank correlation, Biometrika, 30, 81–93. doi:10.1093/biomet/30.1-2.81. (for var)
+#' @references Kendall, M. G. (1945). The treatment of ties in rank problems. Biometrika, 33 239–251. doi:10.1093/biomet/33.3.239 (for var)
+#' @references Chambers, J. M. (1992) Linear models. Chapter 4 of Statistical Models in S eds J. M. Chambers and T. J. Hastie, Wadsworth & Brooks/Cole. (for lm)
+#' @references Wilkinson, G. N. and Rogers, C. E. (1973). Symbolic descriptions of factorial models for analysis of variance. Applied Statistics, 22, 392–399. doi:10.2307/2346786. (for lm)
+#' @references Chambers, J. M., Freeny, A and Heiberger, R. M. (1992) Analysis of variance; designed experiments. Chapter 5 of Statistical Models in S eds J. M. Chambers and T. J. Hastie, Wadsworth & Brooks/Cole. (for aov)
+#' @references Myles Hollander and Douglas A. Wolfe (1973), Nonparametric Statistical Methods. New York: John Wiley & Sons. Pages 115–120. (for kruskal.test)
+#' @references Patrick Royston (1982). An extension of Shapiro and Wilk's W test for normality to large samples. Applied Statistics, 31, 115–124. doi:10.2307/2347973. (for shapiro.test)
+#' @references Patrick Royston (1982). Algorithm AS 181: The W test for Normality. Applied Statistics, 31, 176–180. doi:10.2307/2347986. (for shapiro.test)
+#' @references Patrick Royston (1995). Remark AS R94: A remark on Algorithm AS 181: The W test for normality. Applied Statistics, 44, 547–551. doi:10.2307/2986146. (for shapiro.test)
+#' @references Benjamini, Y., and Hochberg, Y. (1995). Controlling the false discovery rate: a practical and powerful approach to multiple testing. Journal of the Royal Statistical Society Series B, 57, 289–300. doi:10.1111/j.2517-6161.1995.tb02031.x. (for p.adjust)
+#' @references Benjamini, Y., and Yekutieli, D. (2001). The control of the false discovery rate in multiple testing under dependency. Annals of Statistics, 29, 1165–1188. doi:10.1214/aos/1013699998. (for p.adjust)
+#' @references Holm, S. (1979). A simple sequentially rejective multiple test procedure. Scandinavian Journal of Statistics, 6, 65–70. https://www.jstor.org/stable/4615733. (for p.adjust)
+#' @references Hommel, G. (1988). A stagewise rejective multiple test procedure based on a modified Bonferroni test. Biometrika, 75, 383–386. doi:10.2307/2336190. (for p.adjust)
+#' @references Hochberg, Y. (1988). A sharper Bonferroni procedure for multiple tests of significance. Biometrika, 75, 800–803. doi:10.2307/2336325. (for p.adjust)
+#' @references Shaffer, J. P. (1995). Multiple hypothesis testing. Annual Review of Psychology, 46, 561–584. doi:10.1146/annurev.ps.46.020195.003021. (An excellent review of the area.) (for p.adjust)
+#' @references Sarkar, S. (1998). Some probability inequalities for ordered MTP2 random variables: a proof of Simes conjecture. Annals of Statistics, 26, 494–504. doi:10.1214/aos/1028144846. (for p.adjust)
+#' @references Sarkar, S., and Chang, C. K. (1997). The Simes method for multiple hypothesis testing with positively dependent test statistics. Journal of the American Statistical Association, 92, 1601–1608. doi:10.2307/2965431. (for p.adjust)
+#' @references Wright, S. P. (1992). Adjusted P-values for simultaneous inference. Biometrics, 48, 1005–1013. doi:10.2307/2532694. (Explains the adjusted P-value approach.) (for p.adjust)
+#'
 #' @export
 #'
 perform_ComparativeAnalysis <- function(

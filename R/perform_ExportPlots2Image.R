@@ -252,7 +252,7 @@ perform_ExportPlots2Image <- function(
   excluded_classes <- c("data.frame", "tbl_df", "tbl", "tibble", "matrix",
                         "array", "list", "character", "numeric", "logical",
                         "integer", "factor", "prcomp", "POSIXct", "POSIXt",
-                        "character")
+                        "double", "table", "integer")
 
   # If object has excluded classes, it's not a plot
   if (any(excluded_classes %in% obj_classes)) {
@@ -307,7 +307,7 @@ perform_ExportPlots2Image <- function(
   excluded_classes <- c("data.frame", "tbl_df", "tbl", "tibble", "matrix",
                         "array", "character", "numeric", "logical",
                         "integer", "factor", "prcomp", "POSIXct", "POSIXt",
-                        "character")
+                        "double", "table", "integer")
 
   if (any(excluded_classes %in% class(x))) {
     return(FALSE)

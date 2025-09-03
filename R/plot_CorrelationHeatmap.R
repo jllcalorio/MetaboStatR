@@ -4,11 +4,13 @@
 #' Generates correlation or hierarchical clustering heatmaps with advanced filtering
 #' capabilities. The function creates publication-ready visualizations by selecting
 #' the most variable features/samples based on interquartile range (IQR) and applies
-#' statistical significance masking for correlation plots.
+#' statistical significance masking for correlation plots. Automatically selects the
+#' appropriate data source based on replicate merging settings.
 #'
 #' @param data A list object containing preprocessed data. Must include a component
-#'   named \code{data_scaledPCA_rsdFiltered_varFiltered} (typically output from
-#'   \code{perform_PreprocessingPeakData} function).
+#'   named \code{data_scaledPCA_varFiltered} or \code{data_scaledPCA_merged} (typically output from
+#'   \code{perform_PreprocessingPeakData} function). The function automatically selects
+#'   the appropriate data source based on \code{data$Parameters$auto_merge_replicates}.
 #' @param method Character string specifying the correlation method. One of:
 #'   \itemize{
 #'     \item \code{"pearson"}: Pearson product-moment correlation (default)
@@ -73,6 +75,7 @@
 #' The function performs the following steps:
 #' \enumerate{
 #'   \item Validates input parameters and data structure
+#'   \item Automatically selects between \code{data_scaledPCA_varFiltered} and \code{data_scaledPCA_merged} based on \code{auto_merge_replicates} parameter
 #'   \item Calculates interquartile ranges (IQR) to identify most variable features/samples
 #'   \item Selects top N most variable features/samples based on IQR
 #'   \item For correlation plots: computes correlation matrix with p-values and applies significance masking
@@ -121,6 +124,25 @@
 #' @importFrom grDevices colorRampPalette
 #' @importFrom grid grid.newpage
 #'
+#' @references Tukey, J. W. (1977). Exploratory Data Analysis. Reading: Addison-Wesley. (for IQR)
+#' @references Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988). The New S Language. Wadsworth & Brooks/Cole. (for cor)
+#' @references Kendall, M. G. (1938). A new measure of rank correlation, Biometrika, 30, 81â€"93. doi:10.1093/biomet/30.1-2.81. (for cor)
+#' @references Kendall, M. G. (1945). The treatment of ties in rank problems. Biometrika, 33 239â€"251. doi:10.1093/biomet/33.3.239 (for cor)
+#' @references Hollander M. and Wolfe D.A. (1973). Nonparametric Statistical Methods. New York: Wiley. (for Hmisc::rcorr)
+#' @references Press WH, Flannery BP, Teukolsky SA, Vetterling, WT (1988): Numerical Recipes in C. Cambridge: Cambridge University Press. (for Hmisc::rcorr)
+#' @references Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for stats::dist and stats::hclust in pheatmap)
+#' @references Mardia, K. V., Kent, J. T. and Bibby, J. M. (1979) Multivariate Analysis. Academic Press. (for stats::dist in pheatmap)
+#' @references Borg, I. and Groenen, P. (1997) Modern Multidimensional Scaling. Theory and Applications. Springer. (for stats::dist in pheatmap)
+#' @references Everitt, B. (1974). Cluster Analysis. London: Heinemann Educ. Books. (for stats::hclust in pheatmap)
+#' @references Hartigan, J.A. (1975). Clustering Algorithms. New York: Wiley. (for stats::hclust in pheatmap)
+#' @references Sneath, P. H. A. and R. R. Sokal (1973). Numerical Taxonomy. San Francisco: Freeman. (for stats::hclust in pheatmap)
+#' @references Anderberg, M. R. (1973). Cluster Analysis for Applications. Academic Press: New York. (for stats::hclust in pheatmap)
+#' @references Gordon, A. D. (1999). Classification. Second Edition. London: Chapman and Hall / CRC (for stats::hclust in pheatmap)
+#' @references Murtagh, F. (1985). â€œMultidimensional Clustering Algorithmsâ€, in COMPSTAT Lectures 4. Wuerzburg: Physica-Verlag (for algorithmic details of algorithms used). (for stats::hclust in pheatmap)
+#' @references McQuitty, L.L. (1966). Similarity Analysis by Reciprocal Pairs for Discrete and Continuous Data. Educational and Psychological Measurement, 26, 825â€"831. doi:10.1177/001316446602600402. (for stats::hclust in pheatmap)
+#' @references Legendre, P. and L. Legendre (2012). Numerical Ecology, 3rd English ed. Amsterdam: Elsevier Science BV. (for stats::hclust in pheatmap)
+#' @references Murtagh, Fionn and Legendre, Pierre (2014). Ward's hierarchical agglomerative clustering method: which algorithms implement Ward's criterion? Journal of Classification, 31, 274â€"295. doi:10.1007/s00357-014-9161-z. (for stats::hclust in pheatmap)
+#'
 #' @export
 plot_CorrelationHeatmap <- function(
     data,
@@ -140,7 +162,7 @@ plot_CorrelationHeatmap <- function(
 ) {
 
   # Helper function for input validation
-  validate_inputs <- function() {
+  validate_inputs_corrheatmap <- function() {
     # Check required packages
     required_packages <- c("stats", "Hmisc", "pheatmap", "grDevices", "grid")
     missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
@@ -149,18 +171,36 @@ plot_CorrelationHeatmap <- function(
                    paste(missing_packages, collapse = ", ")))
     }
 
-    # Validate data structure
+    # Validate data structure and determine correct data source
     if (!is.list(data)) {
       stop("'data' must be a list object")
     }
 
-    if (!"data_scaledPCA_rsdFiltered_varFiltered" %in% names(data)) {
-      stop("'data' must contain 'data_scaledPCA_rsdFiltered_varFiltered' component")
+    # Determine which data component to use based on auto_merge_replicates parameter
+    use_merged_data <- FALSE
+    if ("Parameters" %in% names(data) &&
+        is.list(data$Parameters) &&
+        "auto_merge_replicates" %in% names(data$Parameters)) {
+      use_merged_data <- isTRUE(data$Parameters$auto_merge_replicates)
     }
 
-    data_matrix <- data$data_scaledPCA_rsdFiltered_varFiltered
+    # Check for appropriate data component
+    if (use_merged_data) {
+      if (!"data_scaledPCA_merged" %in% names(data)) {
+        stop("'data' must contain 'data_scaledPCA_merged' component when auto_merge_replicates is TRUE")
+      }
+      data_component_name <- "data_scaledPCA_merged"
+      data_matrix <- data$data_scaledPCA_merged
+    } else {
+      if (!"data_scaledPCA_varFiltered" %in% names(data)) {
+        stop("'data' must contain 'data_scaledPCA_varFiltered' component when auto_merge_replicates is FALSE or not specified")
+      }
+      data_component_name <- "data_scaledPCA_varFiltered"
+      data_matrix <- data$data_scaledPCA_varFiltered
+    }
+
     if (!is.matrix(data_matrix) && !is.data.frame(data_matrix)) {
-      stop("'data_scaledPCA_rsdFiltered_varFiltered' must be a matrix or data frame")
+      stop(sprintf("'%s' must be a matrix or data frame", data_component_name))
     }
 
     if (nrow(data_matrix) == 0 || ncol(data_matrix) == 0) {
@@ -233,11 +273,15 @@ plot_CorrelationHeatmap <- function(
       stop("'fontsize_labels' must be a positive number")
     }
 
-    return(plot_top_n)
+    # Return both the validated plot_top_n and the determined data info
+    return(list(plot_top_n = plot_top_n,
+                data_matrix = data_matrix,
+                data_component_name = data_component_name,
+                use_merged_data = use_merged_data))
   }
 
   # Helper function to prepare data matrix
-  prepare_data_matrix <- function(data_matrix, plot_what) {
+  prepare_data_matrix_corrheatmap <- function(data_matrix, plot_what) {
     # Convert to matrix if data.frame
     if (is.data.frame(data_matrix)) {
       data_matrix <- as.matrix(data_matrix)
@@ -389,11 +433,14 @@ plot_CorrelationHeatmap <- function(
 
   # Main function execution starts here
 
-  # Validate all inputs
-  plot_top_n <- validate_inputs()
+  # Validate all inputs and get data matrix info
+  validation_results <- validate_inputs_corrheatmap()
+  plot_top_n <- validation_results$plot_top_n
+  selected_data_matrix <- validation_results$data_matrix
+  data_component_name <- validation_results$data_component_name
 
   # Prepare data matrix
-  data_matrix <- prepare_data_matrix(data$data_scaledPCA_rsdFiltered_varFiltered, plot_what)
+  data_matrix <- prepare_data_matrix_corrheatmap(selected_data_matrix, plot_what)
 
   # Calculate IQR values
   iqr_results <- calculate_iqr_values(data_matrix)
@@ -434,12 +481,14 @@ plot_CorrelationHeatmap <- function(
 
   # Compile summary statistics
   summary_stats <- list(
-    n_original_features = ifelse(plot_what == "Samples", nrow(data$data_scaledPCA_rsdFiltered_varFiltered),
-                                 ncol(data$data_scaledPCA_rsdFiltered_varFiltered)),
+    n_original_features = ifelse(plot_what == "Samples", nrow(selected_data_matrix),
+                                 ncol(selected_data_matrix)),
     n_selected_features = n_select,
     n_samples = ifelse(plot_what == "Samples", ncol(filtered_df), nrow(filtered_df)),
     missing_data_percent = round(100 * sum(is.na(filtered_df)) / (nrow(filtered_df) * ncol(filtered_df)), 2),
-    iqr_range = c(min = min(iqr_results$IQR), max = max(iqr_results$IQR))
+    iqr_range = c(min = min(iqr_results$IQR), max = max(iqr_results$IQR)),
+    data_source = data_component_name,
+    auto_merge_replicates = validation_results$use_merged_data
   )
 
   if (plot_type == "correlation") {

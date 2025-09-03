@@ -542,6 +542,41 @@ perform_Export2Excel <- function(
   return(name)
 }
 
+# #' Intelligent Truncation of Long Names
+# #' @noRd
+# .intelligent_truncate <- function(name, max_length) {
+#   if (nchar(name) <= max_length) {
+#     return(name)
+#   }
+#
+#   # Strategy 1: Keep first and last parts, remove middle
+#   if (max_length >= 10 && nchar(name) > max_length) {
+#     first_part_length <- floor(max_length / 2) - 1
+#     last_part_length <- max_length - first_part_length - 2
+#     first_part <- substr(name, 1, first_part_length)
+#     last_part <- substr(name, nchar(name) - last_part_length + 1, nchar(name))
+#     truncated <- paste0(first_part, "..", last_part)
+#
+#     if (nchar(truncated) <= max_length) {
+#       return(truncated)
+#     }
+#   }
+#
+#   # Strategy 2: Remove vowels (except first character)
+#   if (nchar(name) > 1) {
+#     first_char <- substr(name, 1, 1)
+#     rest_chars <- substr(name, 2, nchar(name))
+#     rest_no_vowels <- gsub("[aeiouAEIOU]", "", rest_chars)
+#     truncated <- paste0(first_char, rest_no_vowels)
+#
+#     if (nchar(truncated) <= max_length) {
+#       return(truncated)
+#     }
+#   }
+#
+#   # Strategy 3: Simple truncation
+#   return(substr(name, 1, max_length))
+# }
 
 #' Intelligent Truncation of Long Names
 #' @noRd
@@ -550,32 +585,54 @@ perform_Export2Excel <- function(
     return(name)
   }
 
-  # Strategy 1: Keep first and last parts, remove middle
-  if (max_length >= 10 && nchar(name) > max_length) {
-    first_part_length <- floor(max_length / 2) - 1
-    last_part_length <- max_length - first_part_length - 2
-    first_part <- substr(name, 1, first_part_length)
-    last_part <- substr(name, nchar(name) - last_part_length + 1, nchar(name))
-    truncated <- paste0(first_part, "..", last_part)
+  # Excel's worksheet name limit is 31 characters. For this function,
+  # the max_length parameter is the limit, which can be different.
 
-    if (nchar(truncated) <= max_length) {
-      return(truncated)
-    }
-  }
-
-  # Strategy 2: Remove vowels (except first character)
+  # Strategy 1: Remove all vowels (except first character)
   if (nchar(name) > 1) {
     first_char <- substr(name, 1, 1)
     rest_chars <- substr(name, 2, nchar(name))
     rest_no_vowels <- gsub("[aeiouAEIOU]", "", rest_chars)
-    truncated <- paste0(first_char, rest_no_vowels)
+    vowel_removed_name <- paste0(first_char, rest_no_vowels)
 
-    if (nchar(truncated) <= max_length) {
-      return(truncated)
+    # If this strategy works, return the name.
+    if (nchar(vowel_removed_name) <= max_length) {
+      return(vowel_removed_name)
+    }
+
+    # Strategy 1.1: Randomly remove remaining vowels if still too long.
+
+    # Create a vector of all characters in the original name
+    name_chars <- strsplit(name, "")[[1]]
+    # Get the indices of all vowels (case-insensitive)
+    vowel_indices <- which(grepl("[aeiouAEIOU]", name_chars))
+
+    # If the first character is a vowel, we should exclude its index
+    # from the list of vowels to be removed.
+    if (length(vowel_indices) > 0 && vowel_indices[1] == 1) {
+      vowel_indices <- vowel_indices[-1]
+    }
+
+    # Calculate how many characters need to be removed to fit the limit
+    chars_to_remove <- nchar(name) - max_length
+
+    # If we have enough vowels to remove
+    if (length(vowel_indices) >= chars_to_remove) {
+      # Randomly select which vowels to remove
+      indices_to_remove <- sample(vowel_indices, chars_to_remove)
+      # Sort indices in reverse to avoid shifting
+      indices_to_remove <- sort(indices_to_remove, decreasing = TRUE)
+
+      # Remove the characters at these random indices
+      for (i in indices_to_remove) {
+        name_chars[i] <- ""
+      }
+      return(paste(name_chars, collapse = ""))
     }
   }
 
-  # Strategy 3: Simple truncation
+  # Fallback Strategy: Simple truncation
+  # This serves as a final resort if all other strategies fail.
   return(substr(name, 1, max_length))
 }
 

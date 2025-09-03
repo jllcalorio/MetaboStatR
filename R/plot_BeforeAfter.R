@@ -108,18 +108,18 @@ plot_BeforeAfter <- function(data,
   )
 
   # Extract and prepare data
-  data_prep <- .prepare_data(data, scaled)
+  data_prep <- .prepare_data_plotbeforeafter(data, scaled)
   results$data_before <- data_prep$original
   results$data_after <- data_prep$transformed
 
   # Convert to long format for ggplot
-  long_data <- .convert_to_long_format(data_prep$original, data_prep$transformed)
+  long_data <- .convert_to_long_format_plotbeforeafter(data_prep$original, data_prep$transformed)
 
   # Generate plots based on group_by parameter
   if (group_by == "Sample") {
-    plots <- .create_sample_plots(long_data, data_prep$transformed, n_random_samples)
+    plots <- .create_sample_plots_plotbeforeafter(long_data, data_prep$transformed, n_random_samples)
   } else {
-    plots <- .create_feature_plots(long_data, data_prep$transformed, n_random_features)
+    plots <- .create_feature_plots_plotbeforeafter(long_data, data_prep$transformed, n_random_features)
   }
 
   # Store individual plots
@@ -129,7 +129,7 @@ plot_BeforeAfter <- function(data,
   results$plot_box_after <- plots$p4
 
   # Create combined plot
-  results$plot_combined <- .create_combined_plot(plots, group_by)
+  results$plot_combined <- .create_combined_plot_plotbeforeafter(plots, group_by)
 
   # Add processing summary
   results$processing_info$original_dims <- dim(data_prep$original)
@@ -154,7 +154,7 @@ plot_BeforeAfter <- function(data,
   }
 
   # Required data components
-  required_components <- c("data_no_NA", "Metadata", "data_scaledPCA_rsdFiltered_varFiltered")
+  required_components <- c("data_no_NA", "Metadata", "data_scaledPCA_varFiltered")
   missing_components <- setdiff(required_components, names(data))
   if (length(missing_components) > 0) {
     stop("Missing required data components: ", paste(missing_components, collapse = ", "),
@@ -231,7 +231,7 @@ plot_BeforeAfter <- function(data,
 
 #' Prepare Data for Visualization
 #' @noRd
-.prepare_data <- function(data, scaled) {
+.prepare_data_plotbeforeafter <- function(data, scaled) {
 
   # Identify non-QC samples
   non_qc_indices <- data$Metadata$Group_ != "QC"
@@ -245,7 +245,7 @@ plot_BeforeAfter <- function(data,
 
   # Extract transformed data based on scaling method
   # Note: Both PCA and PLS use the same preprocessed data in this implementation
-  transformed <- data$data_scaledPCA_rsdFiltered_varFiltered[non_qc_indices, , drop = FALSE]
+  transformed <- data$data_scaledPCA_varFiltered[non_qc_indices, , drop = FALSE]
 
   # Validate data integrity
   if (nrow(original) == 0 || ncol(original) == 0) {
@@ -275,17 +275,38 @@ plot_BeforeAfter <- function(data,
 
 #' Convert Data to Long Format
 #' @noRd
-.convert_to_long_format <- function(original, transformed) {
+.convert_to_long_format_plotbeforeafter <- function(original, transformed) {
+
+  # Ensure consistent naming between original and transformed data
+  # Use transformed data column/row names as reference for consistency
+  transformed_sample_names <- rownames(transformed)
+  transformed_feature_names <- colnames(transformed)
+
+  # Apply consistent naming to original data
+  if (is.null(rownames(original))) {
+    rownames(original) <- transformed_sample_names
+  } else {
+    # Ensure original has same sample names as transformed
+    rownames(original) <- transformed_sample_names
+  }
+
+  if (is.null(colnames(original))) {
+    colnames(original) <- transformed_feature_names
+  } else {
+    # Ensure original has same feature names as transformed (in case of filtering)
+    # Only keep features that exist in transformed data
+    common_features <- intersect(colnames(original), transformed_feature_names)
+    if (length(common_features) > 0) {
+      original <- original[, common_features, drop = FALSE]
+      transformed <- transformed[, common_features, drop = FALSE]
+    } else {
+      # If no common features, use transformed feature names
+      colnames(original) <- transformed_feature_names
+    }
+  }
 
   # Helper function to convert matrix to long format
   to_long <- function(mat, data_type) {
-    if (is.null(rownames(mat))) {
-      rownames(mat) <- paste0("Sample_", seq_len(nrow(mat)))
-    }
-    if (is.null(colnames(mat))) {
-      colnames(mat) <- paste0("Feature_", seq_len(ncol(mat)))
-    }
-
     mat %>%
       as.data.frame() %>%
       tibble::rownames_to_column(var = "Sample") %>%
@@ -302,7 +323,7 @@ plot_BeforeAfter <- function(data,
 
 #' Create Sample-wise Plots
 #' @noRd
-.create_sample_plots <- function(long_data, transformed, n_random_samples) {
+.create_sample_plots_plotbeforeafter <- function(long_data, transformed, n_random_samples) {
 
   orig_long <- long_data$original
   trans_long <- long_data$transformed
@@ -322,13 +343,20 @@ plot_BeforeAfter <- function(data,
     ggplot2::labs(x = "Scaled Values", y = "Density") +
     ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
 
-  # Select random samples for box plots
-  n_samples <- nrow(transformed)
+  # Get available samples from the "After" (transformed) long data
+  available_samples_after <- unique(trans_long$Sample)
+  available_samples_before <- unique(orig_long$Sample)
+
+  # Use intersection to ensure samples exist in both datasets
+  common_samples <- intersect(available_samples_before, available_samples_after)
+
+  # Select random samples for box plots based on "After" data availability
+  n_samples <- length(common_samples)
   if (is.null(n_random_samples) || n_random_samples >= n_samples) {
-    selected_samples <- rownames(transformed)
+    selected_samples <- common_samples
     n_selected <- n_samples
   } else {
-    selected_samples <- sample(rownames(transformed), n_random_samples)
+    selected_samples <- sample(common_samples, n_random_samples)
     n_selected <- n_random_samples
   }
 
@@ -366,18 +394,25 @@ plot_BeforeAfter <- function(data,
 
 #' Create Feature-wise Plots
 #' @noRd
-.create_feature_plots <- function(long_data, transformed, n_random_features) {
+.create_feature_plots_plotbeforeafter <- function(long_data, transformed, n_random_features) {
 
   orig_long <- long_data$original
   trans_long <- long_data$transformed
 
-  # Select random features
-  n_features <- ncol(transformed)
+  # Get available features from the "After" (transformed) long data
+  available_features_after <- unique(trans_long$Feature)
+  available_features_before <- unique(orig_long$Feature)
+
+  # Use intersection to ensure features exist in both datasets
+  common_features <- intersect(available_features_before, available_features_after)
+
+  # Select random features based on "After" data availability
+  n_features <- length(common_features)
   if (is.null(n_random_features) || n_random_features >= n_features) {
-    selected_features <- colnames(transformed)
+    selected_features <- common_features
     n_selected <- n_features
   } else {
-    selected_features <- sample(colnames(transformed), n_random_features)
+    selected_features <- sample(common_features, n_random_features)
     n_selected <- n_random_features
   }
 
@@ -434,7 +469,7 @@ plot_BeforeAfter <- function(data,
 
 #' Create Combined Grid Plot
 #' @noRd
-.create_combined_plot <- function(plots, group_by) {
+.create_combined_plot_plotbeforeafter <- function(plots, group_by) {
 
   main_title <- paste("Data Preprocessing Comparison:", group_by, "Perspective")
 

@@ -47,11 +47,12 @@
 #'   \item Row 2: "SubjectID" - Numeric subject identifiers (can be non-unique)
 #'   \item Row 3: "Replicate" - Replicate identifiers (can be non-unique)
 #'   \item Row 4: "Group" - Group assignments including QC samples
-#'   \item Row 5: "Batch" - Batch numbers
-#'   \item Row 6: "Injection" - Unique injection sequence numbers
-#'   \item Row 7: "Normalization" - Concentration markers (e.g., osmolality)
-#'   \item Row 8: "Response" - Response variable values
-#'   \item Rows 9+: Feature/metabolite data (e.g., m/z@retention_time format)
+#'   \item Row 5: "Group2" - 2nd Group assignments including QC samples (this another 'Group' is reserved for whenever another group is available)
+#'   \item Row 6: "Batch" - Batch numbers
+#'   \item Row 7: "Injection" - Unique injection sequence numbers
+#'   \item Row 8: "Normalization" - Concentration markers (e.g., osmolality)
+#'   \item Row 9: "Response" - Response variable values
+#'   \item Rows 10+: Feature/metabolite data (e.g., m/z@retention_time format)
 #' }
 #'
 #' Missing values should be left blank or encoded as 0. QC samples in the Group row
@@ -363,12 +364,12 @@ clean_data_identifiers <- function(raw_data, verbose) {
 #' Validate Data Structure
 #' @keywords internal
 validate_data_structure <- function(raw_data, allow_missing_optional) {
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group",
+  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
                         "Batch", "Injection", "Normalization", "Response")
 
   # Check minimum dimensions
-  if (nrow(raw_data) < 8) {
-    stop("Data must have at least 8 rows (required metadata rows)", call. = FALSE)
+  if (nrow(raw_data) < 10) {
+    stop("Data must have at least 9 rows (required metadata rows)", call. = FALSE)
   }
 
   if (ncol(raw_data) < 2) {
@@ -376,7 +377,7 @@ validate_data_structure <- function(raw_data, allow_missing_optional) {
   }
 
   # Extract first column values
-  first_col_values <- as.character(unlist(raw_data[1:8, 1]))
+  first_col_values <- as.character(unlist(raw_data[1:9, 1]))
 
   # Check for required headers
   missing_headers <- required_headers[!required_headers %in% first_col_values]
@@ -388,7 +389,7 @@ validate_data_structure <- function(raw_data, allow_missing_optional) {
 
   # Validate header positions
   header_positions <- match(required_headers, first_col_values)
-  expected_positions <- 1:8
+  expected_positions <- 1:9
 
   if (!all(header_positions == expected_positions)) {
     stop("Metadata rows are not in the correct order. Expected order: ",
@@ -399,7 +400,7 @@ validate_data_structure <- function(raw_data, allow_missing_optional) {
     required_headers_present = TRUE,
     header_positions = setNames(header_positions, required_headers),
     total_features = ncol(raw_data) - 1,
-    total_samples = nrow(raw_data) - 8
+    total_samples = nrow(raw_data) - 9
   ))
 }
 
@@ -445,7 +446,7 @@ validate_uniqueness_constraints <- function(raw_data) {
   validation_results$injection_sequence <- "... All injection sequences are unique"
 
   # Check feature names uniqueness
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group",
+  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
                         "Batch", "Injection", "Normalization", "Response")
   feature_names <- colnames(raw_data)[!colnames(raw_data) %in% required_headers]
   feature_duplicates <- find_duplicates(feature_names)
@@ -489,7 +490,7 @@ validate_qc_rules <- function(raw_data) {
   }
 
   # Check rows that should be empty for QC samples
-  rows_to_check <- c(2, 3, 7, 8)  # SubjectID, Replicate, Normalization, Response
+  rows_to_check <- c(2, 3, 8, 9)  # SubjectID, Replicate, Normalization, Response
   violations <- c()
 
   for (col in qc_cols) {
@@ -519,7 +520,7 @@ validate_qc_rules <- function(raw_data) {
 #' @keywords internal
 validate_numeric_features <- function(raw_data) {
 
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group",
+  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
                         "Batch", "Injection", "Normalization", "Response")
 
   # Extract feature columns
@@ -589,8 +590,9 @@ generate_metadata_summary <- function(raw_data) {
 
   summary_stats <- list(
     total_samples = nrow(raw_data_samples),
-    total_features = ncol(raw_data_samples) - 8,
+    total_features = ncol(raw_data_samples) - 9,
     groups = table(raw_data_samples$Group),
+    groups2 = table(raw_data_samples$Group2),
     batches = length(unique(raw_data_samples$Batch)),
     qc_samples = sum(grepl("QC", raw_data_samples$Group, ignore.case = TRUE)),
     injection_range = range(as.numeric(raw_data_samples$Injection), na.rm = TRUE),
