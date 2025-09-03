@@ -24,7 +24,8 @@ perform_AUROC(
 \arguments{
 \item{data_PP}{List. Results from the \code{performPreprocessingPeakData} function.
 Must contain \code{$Metadata} with \code{$Group} column and
-\code{$data_scaledPCA_rsdFiltered_varFiltered} matrix.}
+\code{$data_scaledPCA_varFiltered} or \code{$data_scaledPCA_merged} matrix.
+The latter is for the case when replicates were merged.}
 
 \item{data_DR}{List. Results from the \code{performDimensionReduction} function
 (OPLS-DA). Must contain VIP score data frames with naming pattern
@@ -136,6 +137,17 @@ auroc_results <- perform_AUROC(
 )
 }
 
+}
+\references{
+Tom Fawcett (2006) “An introduction to ROC analysis”. Pattern Recognition Letters 27, 861–874. DOI: doi: 10.1016/j.patrec.2005.10.010. (for roc, auc)
+
+Xavier Robin, Natacha Turck, Alexandre Hainard, et al. (2011) “pROC: an open-source package for R and S+ to analyze and compare ROC curves”. BMC Bioinformatics, 7, 77. DOI: doi: 10.1186/1471-2105-12-77. (for roc, auc, ci)
+
+David J. Hand and Robert J. Till (2001). A Simple Generalisation of the Area Under the ROC Curve for Multiple Class Classification Problems. Machine Learning 45(2), p. 171–186. DOI: doi: 10.1023/A:1010920819831. (for auc)
+
+Donna Katzman McClish (1989) “Analyzing a Portion of the ROC Curve”. Medical Decision Making 9(3), 190–195. DOI: doi: 10.1177/0272989X8900900307. (for auc)
+
+Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for median)
 }
 \seealso{
 \code{\link[pROC]{roc}}, \code{\link[pROC]{auc}}, \code{\link[pROC]{ci}}

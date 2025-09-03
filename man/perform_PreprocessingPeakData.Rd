@@ -27,7 +27,8 @@ perform_PreprocessingPeakData(
   filterMaxRSD = 30,
   filterMaxRSD_by = "EQC",
   filterMaxVarSD = 10,
-  verbose = TRUE
+  verbose = TRUE,
+  auto_merge_replicates = TRUE
 )
 }
 \arguments{
@@ -35,7 +36,7 @@ perform_PreprocessingPeakData(
 
 \item{outliers}{Vector. Biological samples and/or QC samples considered as outliers. Example format: \code{c('Sample1', 'Sample2', 'QC1', 'QC2', ...)}. Defaults to \code{NULL}.}
 
-\item{filterMissing}{Numeric. Minimum percentage of missing values across all groups required to remove a feature.}
+\item{filterMissing}{Numeric. Minimum percentage of missing values across all groups required to remove a feature. Set to \code{NULL} to skip this step.}
 
 \item{filterMissing_by_group}{Boolean. Determines whether \code{filterMissing} should assess group-specific missingness before feature removal.}
 
@@ -43,7 +44,7 @@ perform_PreprocessingPeakData(
 
 \item{denMissing}{Numeric. Denominator value used in the fraction \code{1/denMissing} to replace missing values.}
 
-\item{driftBatchCorrection}{Boolean. If \code{TRUE} (default), perform QC-RSC algorithm for signal drift and batch effect correction.}
+\item{driftBatchCorrection}{Boolean. If \code{TRUE} (default), perform Quality Control-Robust Spline Correction (QC-RSC) algorithm for signal drift and batch effect correction.}
 
 \item{spline_smooth_param}{Numeric. Spline smoothing parameter ranging from 0 to 1.}
 
@@ -86,42 +87,65 @@ Default: "Normalization" (if present, otherwise, "sum")}
 \item \code{"sqrt"}: Square-root
 \item \code{"cbrt"}: Cube-root
 \item \code{"vsn"}: Variance Stabilizing Normalization
+\item \code{"glog"}: Variance stabilising generalised logarithm (glog) transformation (added August 24, 2025)
 }}
 
-\item{dataScalePCA}{String. Data scaling for PCA analysis. Options:
+\item{dataScalePCA}{String. Data scaling for PCA analysis. This scaled data will be used in all analysis except PLS-type analysis. Options:
 \itemize{
 \item \code{"none"}: No data scaling
 \item \code{"mean"}: Scale by mean (average)
-\item \code{"meanSD"}: Scale by mean divided by standard deviation (SD)
+\item \code{"meanSD"}: Auto-scaling. Scale by mean divided by standard deviation (SD)
 \item \code{"mean2SD"}: Pareto-scaling. Scale by mean divided by square-root of SD. Always use this for PLS-type analysis.
 }}
 
-\item{dataScalePLS}{String. Data scaling for PLS analysis. Same options as \code{dataScalePCA}.}
+\item{dataScalePLS}{String. Data scaling for PLS analysis only. Same options as \code{dataScalePCA}.}
 
-\item{filterMaxRSD}{Numeric. Threshold for RSD filtering.}
+\item{filterMaxRSD}{Numeric. Threshold for Relative Standard Deviation (RSD) filtering. Set to \code{NULL} to skip this step.}
 
 \item{filterMaxRSD_by}{String. Which QC samples to use for RSD filtering. Options:
 \itemize{
 \item \code{"SQC"}: Filter by sample QC
 \item \code{"EQC"}: Filter by extract QC (default)
-\item \code{"both"}: Filter by by both SQC and EQC (or QC altogether)
+\item \code{"both"}: Filter by by both SQC and EQC (or QC altogether). Use this when there are no SQC and EQC in the "Group" row.
 }}
 
-\item{filterMaxVarSD}{Numeric. Remove \verb{nth percentile} of features with lowest variability.}
+\item{filterMaxVarSD}{Numeric. Remove \verb{nth percentile} of features with lowest variability. Set to \code{NULL} to skip this step.}
 
 \item{verbose}{Logical. Whether to print detailed progress messages. Default TRUE.}
+
+\item{auto_merge_replicates}{Logical. If \code{TRUE} (default), automatically merge technical replicates based on SubjectID and Replicate columns. Only applies when both columns contain meaningful values.}
 }
 \value{
-A list containing results from all preprocessing steps.
+A list containing results from all preprocessing steps and a plot of six random features/metabolites before and after drift- and batch correction (if \code{TRUE}).
 }
 \description{
 Performs a complete data preprocessing workflow to prepare raw data for
 downstream analysis. This function applies preprocessing steps sequentially
 in the order specified by the parameters to ensure optimal data quality
-and analytical readiness.
+and analytical readiness. This function also automatically merges
+technical replicates.
+}
+\references{
+Kirwan, J.A., Broadhurst, D.I., Davidson, R.L. et al. Characterising and correcting batch variation in an automated direct infusion mass spectrometry (DIMS) metabolomics workflow. Anal Bioanal Chem 405, 5147–5157 (2013). \url{https://doi.org/10.1007/s00216-013-6856-7} (pmp::QCRSC)
+
+Parsons, H.M., Ludwig, C., Günther, U.L. et al. Improved classification accuracy in 1- and 2-dimensional NMR metabolomics data using the variance stabilising generalised logarithm transformation. BMC Bioinformatics 8, 234 (2007). \url{https://doi.org/10.1186/1471-2105-8-234} (pmp::glog_transformation)
+
+Frank Dieterle, Alfred Ross, Götz Schlotterbeck, and Hans Senn. Probabilistic Quotient Normalization as Robust Method to Account for Dilution of Complex Biological Mixtures. Application in 1H NMR Metabonomics. Analytical Chemistry 2006 78 (13), 4281-4290. DOI: 10.1021/ac051632c \url{https://pubs.acs.org/doi/10.1021/ac051632c} (pmp::pqn_normalisation)
+
+Jankevics A, Lloyd GR, Weber RJM (2025). pmp: Peak Matrix Processing and signal batch correction for metabolomics datasets. doi:10.18129/B9.bioc.pmp, R package version 1.20.0, \url{https://bioconductor.org/packages/pmp}. (pmp package)
+
+Broadhurst, D.I. (2025). QC:MXP Repeat Injection based Quality Control, Batch Correction, Exploration & Data Cleaning (Version 2.1) Zendono. \url{https://doi.org/10.5281/zenodo.16824822}. Retrieved from \url{https://github.com/broadhurstdavid/QC-MXP}.
+
+Variance stabilization applied to microarray data calibration and to the quantification of differential expression, Wolfgang Huber, Anja von Heydebreck, Holger Sueltmann, Annemarie Poustka, Martin Vingron; Bioinformatics (2002) 18 Suppl.1 S96-S104. \url{https://doi.org/10.1093/bioinformatics/18.suppl_1.s96} (vsn::vsn2)
+
+Huber W, von Heydebreck A, Sueltmann H, Poustka A, Vingron M. Parameter estimation for the calibration and variance stabilization of microarray data. Stat Appl Genet Mol Biol. 2003;2:Article3. doi: 10.2202/1544-6115.1008. Epub 2003 Apr 5. PMID: 16646781. \url{https://pubmed.ncbi.nlm.nih.gov/16646781/} (vsn::vsn2)
+
+L-BFGS-B: Fortran Subroutines for Large-Scale Bound Constrained Optimization, C. Zhu, R.H. Byrd, P. Lu and J. Nocedal, Technical Report, Northwestern University (1996). (vsn::vsn2)
+
+Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. \url{https://doi.org/10.1201/9781351074988} (for scale)
 }
 \seealso{
-\code{\link{perform_DataQualityCheck}} for the data quality check
+\code{\link{perform_DataQualityCheck}} for the data quality check and \code{\link{plot_before_after_correction}} to plot before and after drift- and batch correction
 }
 \author{
 John Lennon L. Calorio

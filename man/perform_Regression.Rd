@@ -2,7 +2,7 @@
 % Please edit documentation in R/perform_Regression.R
 \name{perform_Regression}
 \alias{perform_Regression}
-\title{Perform LASSO and Elastic Net Regression with Cross-Validation}
+\title{Perform LASSO and Elastic Net Regression with Cross-Validation for Categorical and Numeric Responses}
 \usage{
 perform_Regression(
   data,
@@ -11,10 +11,13 @@ perform_Regression(
   train_percent = 80,
   ref = NULL,
   lambda = "1se",
-  remember = NULL,
+  alpha = 0.5,
+  remember = 123,
   verbose = TRUE,
   cv_folds = 10,
-  parallel = FALSE
+  parallel = FALSE,
+  standardize = TRUE,
+  maxit = 1e+05
 )
 }
 \arguments{
@@ -23,25 +26,36 @@ perform_Regression(
 \itemize{
 \item{\code{FunctionOrigin}}: Character string indicating data source
 \item{\code{Metadata}}: Data frame with sample metadata including Group column
-\item{\code{data_scaledPCA_rsdFiltered_varFiltered}}: Matrix of preprocessed features
+\item{\code{data_scaledPCA_varFiltered}}: Matrix of preprocessed features
+\item{\code{data_scaledPCA_merged}}: Matrix of merged replicate features (optional)
+\item{\code{Parameters}}: List containing preprocessing parameters (optional)
 }}
 
 \item{method}{Character vector specifying regression method(s) to perform. Options:
 \itemize{
 \item{\code{"lasso"}}: LASSO regression only (L1 penalty, alpha = 1)
-\item{\code{"enet"}}: Elastic Net regression only (L1+L2 penalty, alpha = 0.5)
+\item{\code{"enet"}}: Elastic Net regression only (L1+L2 penalty)
 \item{\code{c("lasso", "enet")}}: Both methods (recommended for comparison)
 }
 Default: \code{"enet"}}
 
 \item{specify_response}{Character string specifying the response variable column name.
-If \code{NULL}, uses the Group column from metadata. Default: \code{NULL}}
+Can be categorical (classification) or numeric (regression). Supported values:
+\itemize{
+\item{\code{NULL}}: Uses the Group column from metadata (default)
+\item{\code{"Group"}}: Uses the Group column explicitly
+\item{\code{"Group2"}}: Uses the Group2 column if available
+\item{\code{"Response"}}: Uses the Response column if available
+\item{Custom column name}: Any valid column name in metadata
+}
+Default: \code{NULL}}
 
 \item{train_percent}{Numeric value between 1 and 99 specifying the percentage of data
 to use for training. Remaining data used for testing. Default: \code{80}}
 
-\item{ref}{Character string specifying the reference level for the response variable.
-If \code{NULL}, uses the first factor level alphabetically. Default: \code{NULL}}
+\item{ref}{Character string specifying the reference level for categorical response
+variables. If \code{NULL}, uses the first factor level alphabetically. Ignored for
+numeric responses. Default: \code{NULL}}
 
 \item{lambda}{Character string specifying lambda selection criterion:
 \itemize{
@@ -50,8 +64,15 @@ If \code{NULL}, uses the first factor level alphabetically. Default: \code{NULL}
 }
 Default: \code{"1se"}}
 
+\item{alpha}{Numeric value or vector specifying the elastic net mixing parameter(s):
+\itemize{
+\item{\code{Single value}}: Between 0 (ridge) and 1 (lasso). Default: \code{0.5}
+\item{\code{Vector}}: Multiple values for comprehensive tuning, e.g., \code{c(0, 0.25, 0.5, 0.75, 1)}
+}
+When multiple values provided, all will be evaluated and results stored separately.}
+
 \item{remember}{Numeric value for reproducible results. Sets random seed using
-\code{set.seed(remember)}. If \code{NULL}, no seed is set. Default: \code{NULL}}
+\code{set.seed(remember)}. If \code{NULL}, no seed is set. Default: \code{123}}
 
 \item{verbose}{Logical indicating whether to print progress messages and results
 to console. Default: \code{TRUE}}
@@ -61,6 +82,12 @@ selection. Must be between 3 and 20. Default: \code{10}}
 
 \item{parallel}{Logical indicating whether to use parallel processing for
 cross-validation. Default: \code{FALSE}}
+
+\item{standardize}{Logical indicating whether to standardize features before modeling.
+Default: \code{TRUE}}
+
+\item{maxit}{Integer specifying maximum iterations for model convergence.
+Default: \code{100000}}
 }
 \value{
 A list containing regression results with the following structure:
@@ -68,70 +95,74 @@ A list containing regression results with the following structure:
 \item{\code{FunctionOrigin}}{Character string identifying the source function}
 \item{\code{ModelSummary}}{Data frame summarizing model performance metrics}
 \item{\code{DataSplit}}{List containing training/testing data split information}
+\item{\code{DataSource}}{Character string indicating which data matrix was used}
+\item{\code{ResponseType}}{Character string indicating "categorical" or "numeric"}
 \item{\code{LASSO_Results}}{List of LASSO results (if method includes "lasso")}
 \item{\code{ElasticNet_Results}}{List of Elastic Net results (if method includes "enet")}
+\item{\code{AlphaComparison}}{Data frame comparing multiple alpha values (if vector provided)}
 \item{\code{ComparisonSummary}}{Data frame comparing methods (if both performed)}
-}
-
-Each method-specific results list contains:
-\itemize{
-\item{\code{Model}}: Fitted cv.glmnet object
-\item{\code{Predictions}}: Data frame with actual vs predicted values
-\item{\code{ConfusionMatrix}}: Complete confusion matrix object
-\item{\code{Performance}}: Data frame with accuracy, sensitivity, specificity, etc.
-\item{\code{Coefficients}}: Data frame with non-zero coefficients and odds ratios
-\item{\code{Lambda}}: Selected lambda value
-\item{\code{Alpha}}: Alpha parameter used
-\item{\code{ReferenceLevel}}: Reference level for classification
+\item{\code{ErrorLog}}{List of any warnings or errors encountered}
 }
 }
 \description{
 This function performs regularized regression analysis using LASSO (Least Absolute
-Shrinkage and Selection Operator) and/or Elastic Net regression methods. Both methods
-are regularization techniques that prevent overfitting by adding penalty terms to the
-loss function. LASSO uses L1 regularization for feature selection by shrinking
-coefficients to zero, while Elastic Net combines L1 and L2 penalties to handle
-multicollinearity and perform simultaneous feature selection. The function supports
-both binary and multinomial classification tasks with comprehensive model evaluation
-and result reporting.
+Shrinkage and Selection Operator) and/or Elastic Net regression methods with enhanced
+capabilities. Both methods are regularization techniques that prevent overfitting by
+adding penalty terms to the loss function. LASSO uses L1 regularization for feature
+selection, while Elastic Net combines L1 and L2 penalties. The function supports:
+\itemize{
+\item{Binary and multinomial classification (categorical responses)}
+\item{Continuous regression (numeric responses)}
+\item{Multiple alpha values for comprehensive Elastic Net tuning}
+\item{Automatic data source selection based on preprocessing parameters}
+\item{Robust error handling with detailed diagnostics}
+}
 }
 \details{
-Perform Regularized Regression Analysis
+Perform Regularized Regression Analysis with Enhanced Features
 }
 \examples{
 \dontrun{
-# Load required libraries
-library(glmnet)
-library(caret)
-library(dplyr)
-
-# Perform both LASSO and Elastic Net regression
+# Example 1: Categorical response with multiple alpha values
 regression_results <- perform_Regression(
   data = preprocessed_data,
   method = c("lasso", "enet"),
+  specify_response = "Group",
+  alpha = c(0.1, 0.5, 0.9),
   train_percent = 75,
   lambda = "1se",
-  remember = 123,
-  cv_folds = 10
+  remember = 123
 )
 
-# View model comparison
+# Example 2: Numeric response
+regression_results <- perform_Regression(
+  data = preprocessed_data,
+  method = "enet",
+  specify_response = "Response",
+  alpha = 0.5,
+  train_percent = 80
+)
+
+# View results
 print(regression_results$ModelSummary)
-print(regression_results$ComparisonSummary)
-
-# Access LASSO results
-lasso_coef <- regression_results$LASSO_Results$Coefficients
-lasso_perf <- regression_results$LASSO_Results$Performance
-
-# Access Elastic Net results
-enet_coef <- regression_results$ElasticNet_Results$Coefficients
-enet_perf <- regression_results$ElasticNet_Results$Performance
-
-# View confusion matrices
-print(regression_results$LASSO_Results$ConfusionMatrix$table)
-print(regression_results$ElasticNet_Results$ConfusionMatrix$table)
+print(regression_results$AlphaComparison)
 }
 
+}
+\references{
+Friedman, J., Hastie, T. and Tibshirani, R. (2008) Regularization Paths for Generalized Linear Models via Coordinate Descent (2010), Journal of Statistical Software, Vol. 33(1), 1-22, doi:10.18637/jss.v033.i01. (for glmnet)
+
+Simon, N., Friedman, J., Hastie, T. and Tibshirani, R. (2011) Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent, Journal of Statistical Software, Vol. 39(5), 1-13, doi:10.18637/jss.v039.i05. (for glmnet)
+
+Kuhn, M. (2008), “Building predictive models in R using the caret package, ” Journal of Statistical Software, (doi:10.18637/jss.v028.i05). (for confusionMatrix )
+
+Altman, D.G., Bland, J.M. (1994) “Diagnostic tests 1: sensitivity and specificity,” British Medical Journal, vol 308, 1552. (for confusionMatrix )
+
+Altman, D.G., Bland, J.M. (1994) “Diagnostic tests 2: predictive values,” British Medical Journal, vol 309, 102. (for confusionMatrix )
+
+Velez, D.R., et. al. (2008) “A balanced accuracy function for epistasis modeling in imbalanced datasets using multifactor dimensionality reduction.,” Genetic Epidemiology, vol 4, 306. (for confusionMatrix )
+
+Chambers, J. M. and Hastie, T. J. (1992) Statistical Models in S. Wadsworth & Brooks/Cole. (for predict)
 }
 \seealso{
 \code{\link[glmnet]{cv.glmnet}}, \code{\link[caret]{confusionMatrix}}

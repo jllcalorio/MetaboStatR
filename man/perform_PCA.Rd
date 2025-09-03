@@ -22,7 +22,9 @@ perform_PCA(
 )
 }
 \arguments{
-\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function.}
+\item{data}{List. This list must be a result from the \code{perform_PreprocessingPeakData} function.
+The function will automatically detect if replicates were merged during preprocessing
+and use the appropriate data matrix.}
 
 \item{scorePC}{List. A list of 2-element numeric vectors, where each vector specifies
 the principal components to plot. For example: list(c(1,2), c(1,3), c(2,3))
@@ -100,8 +102,15 @@ plot2 <- multi_plots$plots[[2]]  # PC1 vs PC3
 scree <- multi_plots$scree_plot  # Scree plot
 
 # Display all plots
-display_AllPlots(multi_plots, include_scree = TRUE)
+plot_PCAScreeScores(multi_plots, include_scree = TRUE)
 }
+}
+\references{
+Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for prcomp)
+
+Mardia, K. V., J. T. Kent, and J. M. Bibby (1979) Multivariate Analysis, London: Academic Press. (for prcomp)
+
+Venables, W. N. and B. D. Ripley (2002) Modern Applied Statistics with S, Springer-Verlag. (for prcomp)
 }
 \author{
 John Lennon L. Calorio

@@ -2,7 +2,7 @@
 % Please edit documentation in R/perform_AUROC.R
 \name{.create_roc_plot}
 \alias{.create_roc_plot}
-\title{Create ROC plot for top features}
+\title{Create ROC plot for top features - FIXED AXES}
 \usage{
 .create_roc_plot(
   feature_data,
@@ -15,6 +15,6 @@
 )
 }
 \description{
-Create ROC plot for top features
+Create ROC plot for top features - FIXED AXES
 }
 \keyword{internal}

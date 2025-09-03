@@ -2,7 +2,7 @@
 % Please edit documentation in R/perform_AUROC.R
 \name{.create_individual_plots}
 \alias{.create_individual_plots}
-\title{Create individual plots for specified metabolites}
+\title{Create individual plots for specified metabolites - FIXED AXES}
 \usage{
 .create_individual_plots(
   data_PP,
@@ -20,6 +20,6 @@
 )
 }
 \description{
-Create individual plots for specified metabolites
+Create individual plots for specified metabolites - FIXED AXES
 }
 \keyword{internal}

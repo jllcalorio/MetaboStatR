@@ -71,11 +71,12 @@ The input data must follow a specific structure:
 \item Row 2: "SubjectID" - Numeric subject identifiers (can be non-unique)
 \item Row 3: "Replicate" - Replicate identifiers (can be non-unique)
 \item Row 4: "Group" - Group assignments including QC samples
-\item Row 5: "Batch" - Batch numbers
-\item Row 6: "Injection" - Unique injection sequence numbers
-\item Row 7: "Normalization" - Concentration markers (e.g., osmolality)
-\item Row 8: "Response" - Response variable values
-\item Rows 9+: Feature/metabolite data (e.g., m/z@retention_time format)
+\item Row 5: "Group2" - 2nd Group assignments including QC samples (this another 'Group' is reserved for whenever another group is available)
+\item Row 6: "Batch" - Batch numbers
+\item Row 7: "Injection" - Unique injection sequence numbers
+\item Row 8: "Normalization" - Concentration markers (e.g., osmolality)
+\item Row 9: "Response" - Response variable values
+\item Rows 10+: Feature/metabolite data (e.g., m/z@retention_time format)
 }
 
 Missing values should be left blank or encoded as 0. QC samples in the Group row

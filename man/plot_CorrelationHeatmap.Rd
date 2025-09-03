@@ -23,8 +23,9 @@ plot_CorrelationHeatmap(
 }
 \arguments{
 \item{data}{A list object containing preprocessed data. Must include a component
-named \code{data_scaledPCA_rsdFiltered_varFiltered} (typically output from
-\code{perform_PreprocessingPeakData} function).}
+named \code{data_scaledPCA_varFiltered} or \code{data_scaledPCA_merged} (typically output from
+\code{perform_PreprocessingPeakData} function). The function automatically selects
+the appropriate data source based on \code{data$Parameters$auto_merge_replicates}.}
 
 \item{method}{Character string specifying the correlation method. One of:
 \itemize{
@@ -103,12 +104,14 @@ A list containing:
 Generates correlation or hierarchical clustering heatmaps with advanced filtering
 capabilities. The function creates publication-ready visualizations by selecting
 the most variable features/samples based on interquartile range (IQR) and applies
-statistical significance masking for correlation plots.
+statistical significance masking for correlation plots. Automatically selects the
+appropriate data source based on replicate merging settings.
 }
 \details{
 The function performs the following steps:
 \enumerate{
 \item Validates input parameters and data structure
+\item Automatically selects between \code{data_scaledPCA_varFiltered} and \code{data_scaledPCA_merged} based on \code{auto_merge_replicates} parameter
 \item Calculates interquartile ranges (IQR) to identify most variable features/samples
 \item Selects top N most variable features/samples based on IQR
 \item For correlation plots: computes correlation matrix with p-values and applies significance masking
@@ -146,6 +149,43 @@ result <- plot_CorrelationHeatmap(
 )
 }
 
+}
+\references{
+Tukey, J. W. (1977). Exploratory Data Analysis. Reading: Addison-Wesley. (for IQR)
+
+Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988). The New S Language. Wadsworth & Brooks/Cole. (for cor)
+
+Kendall, M. G. (1938). A new measure of rank correlation, Biometrika, 30, 81â€"93. doi:10.1093/biomet/30.1-2.81. (for cor)
+
+Kendall, M. G. (1945). The treatment of ties in rank problems. Biometrika, 33 239â€"251. doi:10.1093/biomet/33.3.239 (for cor)
+
+Hollander M. and Wolfe D.A. (1973). Nonparametric Statistical Methods. New York: Wiley. (for Hmisc::rcorr)
+
+Press WH, Flannery BP, Teukolsky SA, Vetterling, WT (1988): Numerical Recipes in C. Cambridge: Cambridge University Press. (for Hmisc::rcorr)
+
+Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for stats::dist and stats::hclust in pheatmap)
+
+Mardia, K. V., Kent, J. T. and Bibby, J. M. (1979) Multivariate Analysis. Academic Press. (for stats::dist in pheatmap)
+
+Borg, I. and Groenen, P. (1997) Modern Multidimensional Scaling. Theory and Applications. Springer. (for stats::dist in pheatmap)
+
+Everitt, B. (1974). Cluster Analysis. London: Heinemann Educ. Books. (for stats::hclust in pheatmap)
+
+Hartigan, J.A. (1975). Clustering Algorithms. New York: Wiley. (for stats::hclust in pheatmap)
+
+Sneath, P. H. A. and R. R. Sokal (1973). Numerical Taxonomy. San Francisco: Freeman. (for stats::hclust in pheatmap)
+
+Anderberg, M. R. (1973). Cluster Analysis for Applications. Academic Press: New York. (for stats::hclust in pheatmap)
+
+Gordon, A. D. (1999). Classification. Second Edition. London: Chapman and Hall / CRC (for stats::hclust in pheatmap)
+
+Murtagh, F. (1985). â€œMultidimensional Clustering Algorithmsâ€, in COMPSTAT Lectures 4. Wuerzburg: Physica-Verlag (for algorithmic details of algorithms used). (for stats::hclust in pheatmap)
+
+McQuitty, L.L. (1966). Similarity Analysis by Reciprocal Pairs for Discrete and Continuous Data. Educational and Psychological Measurement, 26, 825â€"831. doi:10.1177/001316446602600402. (for stats::hclust in pheatmap)
+
+Legendre, P. and L. Legendre (2012). Numerical Ecology, 3rd English ed. Amsterdam: Elsevier Science BV. (for stats::hclust in pheatmap)
+
+Murtagh, Fionn and Legendre, Pierre (2014). Ward's hierarchical agglomerative clustering method: which algorithms implement Ward's criterion? Journal of Classification, 31, 274â€"295. doi:10.1007/s00357-014-9161-z. (for stats::hclust in pheatmap)
 }
 \seealso{
 \code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}}

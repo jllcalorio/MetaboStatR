@@ -2,7 +2,7 @@
 % Please edit documentation in R/perform_PLS.R
 \name{perform_PLS}
 \alias{perform_PLS}
-\title{Perform Orthogonal Partial Least Squares Discriminant Analysis (OPLS-DA) and Related Methods}
+\title{Perform Partial Least Squares (PLS) Related Methods}
 \usage{
 perform_PLS(
   data,
@@ -112,6 +112,13 @@ results <- perform_PLS(data, method = "plsda",
 results <- perform_PLS(data, method = "splsda", ncomp = 3, keepX = c(10, 5, 5))
 }
 
+}
+\references{
+Eriksson et al. (2006). Multi- and Megarvariate Data Analysis. Umetrics Academy. Rosipal and Kramer (2006). Overview and recent advances in partial least squares Tenenhaus (1990). La regression PLS : theorie et pratique. Technip. Wehrens (2011). Chemometrics with R. Springer. Wold et al. (2001). PLS-regression: a basic tool of chemometrics (for PLS)
+
+Rohart F, Gautier B, Singh A, Lê Cao K-A. mixOmics: an R package for 'omics feature selection and multiple data integration. PLoS Comput Biol 13(11): e1005752 (for sPLS)
+
+Galindo-Prieto B., Eriksson L. and Trygg J. (2014). Variable influence on projection (VIP) for orthogonal projections to latent structures (OPLS). Journal of Chemometrics 28, 623-632. (for getVipVn)
 }
 \author{
 John Lennon L. Calorio
