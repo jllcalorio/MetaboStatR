@@ -572,10 +572,17 @@ perform_LMEM <- function(
 
       # Add adjusted p-values and stars
       if (!is.null(combined_fixed_effects) && "p_value" %in% colnames(combined_fixed_effects)) {
+
+        # Initialize the adj_p column with the original p-values
+        combined_fixed_effects$adj_p <- combined_fixed_effects$p_value
+
+        # Adjust p-values for each unique factor in the 'Effect' column
         if (!is.na(adj_p) && adj_p != "none") {
-          combined_fixed_effects$adj_p <- p.adjust(combined_fixed_effects$p_value, method = adj_p)
-        } else {
-          combined_fixed_effects$adj_p <- combined_fixed_effects$p_value
+          unique_effects <- unique(combined_fixed_effects$Effect)
+          for (effect in unique_effects) {
+            indices <- combined_fixed_effects$Effect == effect
+            combined_fixed_effects$adj_p[indices] <- p.adjust(combined_fixed_effects$p_value[indices], method = adj_p)
+          }
         }
 
         if (stars) {

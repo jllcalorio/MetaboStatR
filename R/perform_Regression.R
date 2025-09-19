@@ -721,7 +721,7 @@ perform_Regression <- function(
 
     # Make predictions
     if (response_info$type == "categorical") {
-      predictions <- stats::predict(
+      predictions <- predict(
         model_fit,
         s = selected_lambda,
         newx = x_test,
@@ -730,7 +730,7 @@ perform_Regression <- function(
       predictions <- as.vector(predictions)
       predictions <- factor(predictions, levels = response_info$levels)
     } else {
-      predictions <- stats::predict(
+      predictions <- predict(
         model_fit,
         s = selected_lambda,
         newx = x_test,

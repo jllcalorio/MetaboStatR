@@ -315,8 +315,14 @@ perform_AUROC <- function(
     stop("data_PP must contain $Metadata$Group")
   }
 
-  if (is.null(data_PP$data_scaledPCA_varFiltered)) {
-    stop("data_PP must contain $data_scaledPCA_varFiltered")
+  # if (is.null(data_PP$data_scaledPCA_varFiltered)) {
+  #   stop("data_PP must contain $data_scaledPCA_varFiltered")
+  # }
+
+  if(is.null(data_PP$data_scaledPLS_merged)) {
+    if(is.null(data_PP$data_scaledPCA_varFiltered)) {
+      stop("data_PP must contain $data_scaledPCA_varFiltered")
+    }
   }
 
   # Check data_CA structure

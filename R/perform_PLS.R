@@ -6,7 +6,7 @@
 #'
 #' @param data A list containing processed data with the following required components:
 #'   \itemize{
-#'     \item \code{data_scaledPLS_rsdFiltered_varFiltered}: Matrix or data.frame of processed data
+#'     \item \code{data_scaledPLS_varFiltered}: Matrix or data.frame of processed data
 #'     \item \code{Metadata}: Data.frame containing sample metadata with 'Group' and 'Group_' columns
 #'   }
 #' @param method Character string specifying the PLS method to use. Options are:
@@ -54,13 +54,13 @@
 #' \dontrun{
 #' # Example data structure
 #' data <- list(
-#'   data_scaledPLS_rsdFiltered_varFiltered = matrix(rnorm(1000), nrow = 50, ncol = 20),
+#'   data_scaledPLS_varFiltered = matrix(rnorm(1000), nrow = 50, ncol = 20),
 #'   Metadata = data.frame(
 #'     Group = c(rep(c("Control", "Treatment"), c(20, 20)), rep(c("SQC", "EQC"), c(5, 5))),
 #'     Group_ = c(rep(c("Control", "Treatment"), c(20, 20)), rep("QC", 10))
 #'   )
 #' )
-#' colnames(data$data_scaledPLS_rsdFiltered_varFiltered) <- paste0("Feature_", 1:20)
+#' colnames(data$data_scaledPLS_varFiltered) <- paste0("Feature_", 1:20)
 #'
 #' # Perform OPLS-DA
 #' results <- perform_PLS(data, method = "oplsda")
@@ -114,8 +114,8 @@ perform_PLS <- function(data,
   # }
 
   # Input validation
-  validate_inputs(data, method, arrangeLevels, predI, orthoI, crossvalI,
-                  permI, scaleC, top_features, ncomp, verbose)
+  validate_inputs_PLS(data, method, arrangeLevels, predI, orthoI, crossvalI,
+                      permI, scaleC, top_features, ncomp, verbose)
 
   # Initialize results list
   results <- list(
@@ -166,8 +166,8 @@ perform_PLS <- function(data,
 }
 
 # Helper function: Input validation
-validate_inputs <- function(data, method, arrangeLevels, predI, orthoI,
-                            crossvalI, permI, scaleC, top_features, ncomp, verbose) {
+validate_inputs_PLS <- function(data, method, arrangeLevels, predI, orthoI,
+                                crossvalI, permI, scaleC, top_features, ncomp, verbose) {
 
   # Check required packages
   required_packages <- c("ggplot2", "dplyr", "tibble", "tidyr", "purrr")
@@ -182,7 +182,19 @@ validate_inputs <- function(data, method, arrangeLevels, predI, orthoI,
     stop("'data' must be a list")
   }
 
-  required_components <- c("data_scaledPLS_rsdFiltered_varFiltered", "Metadata")
+  # required_components <- c("data_scaledPLS_varFiltered", "Metadata")
+  # missing_components <- required_components[!required_components %in% names(data)]
+  # Determine which data source to use based on auto_merge_replicates
+  if (isTRUE(data$Parameters$auto_merge_replicates)) {
+    selected_data <- "data_scaledPLS_merged"
+  } else {
+    selected_data <- "data_scaledPLS_varFiltered"
+  }
+
+  # Update required components based on selected data
+  required_components <- c(selected_data, "Metadata")
+
+  # Check for missing components
   missing_components <- required_components[!required_components %in% names(data)]
 
   if (length(missing_components) > 0) {
@@ -247,16 +259,23 @@ prepare_pls_data <- function(data, verbose) {
 
   if (verbose) cat("Preparing data for analysis...\n")
 
-  # Check if data exists and is not empty
-  if (is.null(data$data_scaledPLS_rsdFiltered_varFiltered)) {
-    stop("data_scaledPLS_rsdFiltered_varFiltered is NULL. Please ensure data processing is completed.")
+  # # Check if data exists and is not empty
+  # if (is.null(data$data_scaledPLS_varFiltered)) {
+  #   stop("data_scaledPLS_varFiltered is NULL. Please ensure data processing is completed.")
+  # }
+
+  # Determine which data source to use based on auto_merge_replicates
+  if (!is.null(data$data_scaledPLS_merged)) {
+    data_matrix <- data$data_scaledPLS_merged
+  } else {
+    data_matrix <- data$data_scaledPLS_varFiltered
   }
 
-  data_matrix <- data$data_scaledPLS_rsdFiltered_varFiltered
+  # data_matrix <- data$data_scaledPLS_varFiltered
 
   # Check if data is empty
   if (length(data_matrix) == 0 || nrow(data_matrix) == 0 || ncol(data_matrix) == 0) {
-    stop("data_scaledPLS_rsdFiltered_varFiltered is empty. Please ensure data processing is completed.")
+    stop("data_scaledPLS_varFiltered is empty. Please ensure data processing is completed.")
   }
 
   if (verbose) cat("Using processed and filtered data (", nrow(data_matrix), " samples x ", ncol(data_matrix), " features).\n")
@@ -280,7 +299,6 @@ prepare_pls_data <- function(data, verbose) {
 
 # Helper function: Get non-QC indices
 get_non_qc_indices <- function(data, verbose) {
-
   # Use Group_ column to identify QC samples (where Group_ == "QC")
   non_qc_indices <- data$Metadata$Group_ != "QC"
   n_bio <- sum(non_qc_indices)

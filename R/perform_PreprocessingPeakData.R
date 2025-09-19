@@ -64,8 +64,8 @@
 #'    \item \code{"both"}: Filter by by both SQC and EQC (or QC altogether). Use this when there are no SQC and EQC in the "Group" row.
 #'    }
 #' @param filterMaxVarSD Numeric. Remove `nth percentile` of features with lowest variability. Set to `NULL` to skip this step.
-#' @param verbose Logical. Whether to print detailed progress messages. Default TRUE.
 #' @param auto_merge_replicates Logical. If `TRUE` (default), automatically merge technical replicates based on SubjectID and Replicate columns. Only applies when both columns contain meaningful values.
+#' @param verbose Logical. Whether to print detailed progress messages. Default `TRUE.`
 #'
 #' @returns A list containing results from all preprocessing steps and a plot of six random features/metabolites before and after drift- and batch correction (if `TRUE`).
 #'
@@ -110,8 +110,8 @@ perform_PreprocessingPeakData <- function(
     filterMaxRSD                = 30,
     filterMaxRSD_by             = "EQC",
     filterMaxVarSD              = 10,
-    verbose                     = TRUE,
-    auto_merge_replicates       = TRUE
+    auto_merge_replicates       = TRUE,
+    verbose                     = TRUE
 ) {
 
   # Empty list for results
@@ -297,6 +297,15 @@ perform_PreprocessingPeakData <- function(
   }, error = function(e) {
     stop("Error in data transposition and preparation: ", e$message)
   })
+
+  # Replace the auto_merge_replicates case TRUE but there are no replicates found
+  if (auto_merge_replicates) {
+    if (sum(df$Replicate) == 0) {
+      auto_merge_replicates = FALSE
+      # auto_merge_replicates2 = "TRUE -> FALSE"
+      msg("auto_merge_replicates was set to FALSE since there are no Technical Replicates found, i.e., the 'Replicate' row is empty.")
+    }
+  }
 
   n_samples <- nrow(data_transposed)
   n_features_metabolites <- ncol(data_transposed) - 8
@@ -943,6 +952,31 @@ perform_PreprocessingPeakData <- function(
 
     msg(sprintf("Applying RSD filtering (threshold: %g%%) for %s data...", threshold, data_for))
 
+    ## Added September 4, 2025
+    # Debug: Check sample alignment
+    data_samples <- rownames(data)
+    meta_samples <- metadata$Samples
+
+    msg(sprintf("Data samples: %d, Metadata samples: %d",
+                length(data_samples), length(meta_samples)))
+
+    # Ensure exact matching
+    if (!all(data_samples %in% meta_samples)) {
+      warning("Some data samples not found in metadata. Attempting to fix alignment.")
+      # Use sample order from metadata that exists in data
+      common_samples <- intersect(data_samples, meta_samples)
+      if (length(common_samples) == 0) {
+        warning("No matching samples found. Skipping RSD filtering.")
+        return(data)
+      }
+
+      # Reorder both data and metadata to match
+      data <- data[common_samples, , drop = FALSE]
+      meta_indices <- match(common_samples, meta_samples)
+      metadata <- metadata[meta_indices, ]
+    }
+    ##
+
     if (!requireNamespace("pmp", quietly = TRUE)) {
       warning("Package 'pmp' not available. Skipping RSD filtering.")
       return(data)
@@ -950,13 +984,14 @@ perform_PreprocessingPeakData <- function(
 
     tryCatch({
       # Determine QC label and classes based on filter_by parameter
-      qc_label <- ifelse(filter_by == "both", "QC", filter_by)
-
+      # qc_label <- ifelse(filter_by == "both", "QC", filter_by)
       # Get the correct classes vector based on filter_by
       if (filter_by == "both") {
-        classes <- metadata$Group_
+        qc_label <- "QC"
+        classes <- metadata$Group_  # Uses simplified Group_
       } else {
-        classes <- metadata$Group
+        qc_label <- filter_by
+        classes <- metadata$Group   # Uses original Group
       }
 
       # Ensure we have the right number of samples by matching rownames
@@ -996,6 +1031,22 @@ perform_PreprocessingPeakData <- function(
         warning(sprintf("No %s samples found for RSD filtering. Skipping RSD filtering.", qc_label))
         return(data)
       }
+
+      ## Added September 4, 2025
+      # Debugging code
+      msg(sprintf("QC samples found: %d", sum(classes_matched == qc_label, na.rm = TRUE)))
+      msg(sprintf("Total samples for RSD: %d", length(classes_matched)))
+      msg(sprintf("Data dimensions: %d x %d", nrow(data), ncol(data)))
+
+      # Calculate RSD for a few features manually to verify
+      if (sum(classes_matched == qc_label, na.rm = TRUE) > 0) {
+        qc_indices <- which(classes_matched == qc_label)
+        sample_rsds <- apply(data[qc_indices, 1:min(5, ncol(data)), drop = FALSE], 2, function(x) {
+          sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE) * 100
+        })
+        msg(sprintf("Sample RSDs for first 5 features: %s", paste(round(sample_rsds, 2), collapse = ", ")))
+      }
+      ##
 
       filtered_data <- pmp::filter_peaks_by_rsd(
         t(data),
