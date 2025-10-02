@@ -14,6 +14,7 @@
 #'   \item Proper QC sample annotation (empty values in SubjectID, Replicate, Normalization, Response for QC samples)
 #'   \item Numeric validation of feature/metabolite data
 #'   \item Character cleaning and standardization of identifiers
+#'   \item Optional merging of duplicate samples by mean or median
 #' }
 #'
 #' @param file_location Character string specifying the file path. If NULL, an interactive
@@ -30,6 +31,10 @@
 #'   optional metadata rows (SubjectID, Replicate, Normalization, Response). Default is TRUE.
 #' @param clean_names Logical indicating whether to clean special characters from names.
 #'   Default is TRUE.
+#' @param merge_duplicate_samples_by Character string specifying how to handle duplicate
+#'   sample names. Options: NULL (default, throws error on duplicates), "mean" (average
+#'   duplicate samples), "median" (take median of duplicate samples). If no duplicates exist,
+#'   this parameter is ignored. When merging, metadata from the first occurrence is retained.
 #' @param verbose Logical indicating whether to display progress messages. Default is TRUE.
 #'
 #' @return A list containing:
@@ -58,6 +63,12 @@
 #' Missing values should be left blank or encoded as 0. QC samples in the Group row
 #' must have empty values in SubjectID, Replicate, Normalization, and Response rows.
 #'
+#' When \code{merge_duplicate_samples_by} is set to "mean" or "median", duplicate samples
+#' are identified by their Sample name and merged accordingly. The metadata (SubjectID,
+#' Replicate, Group, Group2, Batch, Normalization, Response) from the first occurrence
+#' is retained, while the Injection value is set to the minimum injection number among
+#' duplicates. Feature/metabolite values are aggregated using the specified method.
+#'
 #' @examples
 #' \dontrun{
 #' # Basic usage with file selection dialog
@@ -76,6 +87,18 @@
 #'   skip_rows = 1
 #' )
 #'
+#' # Merge duplicate samples by taking their mean
+#' result <- perform_DataQualityCheck(
+#'   file_location = "path/to/data.xlsx",
+#'   merge_duplicate_samples_by = "mean"
+#' )
+#'
+#' # Merge duplicate samples by taking their median
+#' result <- perform_DataQualityCheck(
+#'   file_location = "path/to/data.xlsx",
+#'   merge_duplicate_samples_by = "median"
+#' )
+#'
 #' # Access results
 #' clean_data <- result$raw_data
 #' validation_summary <- result$validation_report
@@ -88,11 +111,11 @@
 #'
 #' @export
 #' @importFrom readxl read_excel
-#' @importFrom dplyr mutate arrange select all_of
+#' @importFrom dplyr mutate arrange select all_of group_by summarise across
 #' @importFrom stringr str_replace_all str_trim
 #' @importFrom utils read.csv read.delim
 #' @importFrom tools file_ext
-#' @importFrom stats setNames
+#' @importFrom stats setNames median
 perform_DataQualityCheck <- function(
     file_location = NULL,
     sheet_name = NULL,
@@ -101,16 +124,25 @@ perform_DataQualityCheck <- function(
     validate_qc = TRUE,
     allow_missing_optional = TRUE,
     clean_names = TRUE,
+    merge_duplicate_samples_by = NULL,
     verbose = TRUE
 ) {
 
+  # Validate merge_duplicate_samples_by parameter
+  if (!is.null(merge_duplicate_samples_by)) {
+    if (!merge_duplicate_samples_by %in% c("mean", "median")) {
+      stop("merge_duplicate_samples_by must be NULL, 'mean', or 'median'", call. = FALSE)
+    }
+  }
+
   # Initialize results object with processing metadata
   results <- initialize_results_object(file_location, sheet_name, validate_qc,
-                                       allow_missing_optional, clean_names)
+                                       allow_missing_optional, clean_names,
+                                       merge_duplicate_samples_by)
 
   tryCatch({
     # Step 1: Load and validate file
-    if (verbose) message("Step 1/6: Reading and validating file...")
+    if (verbose) message("Step 1/7: Reading and validating file...")
     original_data <- load_and_validate_file(file_location, sheet_name, skip_rows,
                                             separator, verbose)
     results$raw_data <- original_data  # Store original data
@@ -121,34 +153,60 @@ perform_DataQualityCheck <- function(
 
     # Step 2: Clean names if requested
     if (clean_names) {
-      if (verbose) message("Step 2/6: Cleaning special characters in identifiers...")
+      if (verbose) message("Step 2/7: Cleaning special characters in identifiers...")
       raw_data <- clean_data_identifiers(raw_data, verbose)
     } else {
-      if (verbose) message("Step 2/6: Skipping name cleaning (clean_names = FALSE)")
+      if (verbose) message("Step 2/7: Skipping name cleaning (clean_names = FALSE)")
     }
 
     # Step 3: Validate required structure
-    if (verbose) message("Step 3/6: Validating data structure...")
+    if (verbose) message("Step 3/7: Validating data structure...")
     structure_validation <- validate_data_structure(raw_data, allow_missing_optional)
     results$validation_report$structure <- structure_validation
 
-    # Step 4: Check for duplicates
-    if (verbose) message("Step 4/6: Checking for duplicate identifiers...")
+    # Step 4: Check for duplicates (or merge them if requested)
+    if (verbose) message("Step 4/7: Checking for duplicate identifiers...")
     raw_data <- transpose_and_prepare_data(raw_data)
-    duplicate_validation <- validate_uniqueness_constraints(raw_data)
+    duplicate_validation <- validate_uniqueness_constraints(raw_data, merge_duplicate_samples_by, verbose)
     results$validation_report$duplicates <- duplicate_validation
 
-    # Step 5: Validate QC rules if requested
+    # Step 5: Merge duplicate samples if requested
+    if (!is.null(merge_duplicate_samples_by)) {
+      sample_names <- as.character(raw_data$Sample)
+      sample_duplicates <- find_duplicates(sample_names)
+
+      if (length(sample_duplicates) > 0) {
+        if (verbose) message("Step 5/7: Merging duplicate samples by ", merge_duplicate_samples_by, "...")
+        raw_data <- merge_duplicate_samples(raw_data, merge_duplicate_samples_by, verbose)
+        results$validation_report$merge_info <- list(
+          method = merge_duplicate_samples_by,
+          duplicates_merged = sample_duplicates,
+          samples_before_merge = nrow(raw_data) + length(sample_duplicates),
+          samples_after_merge = nrow(raw_data)
+        )
+      } else {
+        if (verbose) message("Step 5/7: No duplicate samples found, skipping merge...")
+        results$validation_report$merge_info <- list(
+          method = merge_duplicate_samples_by,
+          duplicates_merged = character(0),
+          message = "No duplicates found"
+        )
+      }
+    } else {
+      if (verbose) message("Step 5/7: Skipping duplicate merge (merge_duplicate_samples_by = NULL)")
+    }
+
+    # Step 6: Validate QC rules if requested
     if (validate_qc) {
-      if (verbose) message("Step 5/6: Validating QC sample rules...")
+      if (verbose) message("Step 6/7: Validating QC sample rules...")
       qc_validation <- validate_qc_rules(raw_data)
       results$validation_report$qc_rules <- qc_validation
     } else {
-      if (verbose) message("Step 5/6: Skipping QC validation (validate_qc = FALSE)")
+      if (verbose) message("Step 6/7: Skipping QC validation (validate_qc = FALSE)")
     }
 
-    # Step 6: Validate numeric data and finalize
-    if (verbose) message("Step 6/6: Validating numeric data and finalizing...")
+    # Step 7: Validate numeric data and finalize
+    if (verbose) message("Step 7/7: Validating numeric data and finalizing...")
     raw_data <- sort_by_injection_sequence(raw_data)
     numeric_validation <- validate_numeric_features(raw_data)
     results$validation_report$numeric_data <- numeric_validation
@@ -179,15 +237,17 @@ perform_DataQualityCheck <- function(
 #' Initialize Results Object
 #' @keywords internal
 initialize_results_object <- function(file_location, sheet_name, validate_qc,
-                                      allow_missing_optional, clean_names) {
+                                      allow_missing_optional, clean_names,
+                                      merge_duplicate_samples_by) {
   list(
     FunctionOrigin = "perform_DataQualityCheck",
-    version = "2.0.0",
+    version = "2.1.0",
     file_location = file_location,
     sheet_name = sheet_name,
     validate_qc = validate_qc,
     allow_missing_optional = allow_missing_optional,
     clean_names = clean_names,
+    merge_duplicate_samples_by = merge_duplicate_samples_by,
     processing_log = list(
       start_time = Sys.time(),
       completion_time = NULL,
@@ -419,31 +479,33 @@ transpose_and_prepare_data <- function(raw_data) {
 
 #' Validate Uniqueness Constraints
 #' @keywords internal
-validate_uniqueness_constraints <- function(raw_data) {
+validate_uniqueness_constraints <- function(raw_data, merge_duplicate_samples_by, verbose) {
 
   validation_results <- list()
 
   # Check sample names uniqueness
   sample_names <- as.character(raw_data$Sample)
   sample_duplicates <- find_duplicates(sample_names)
-  if (length(sample_duplicates) > 0) {
-    stop("Duplicate sample names found: ", paste(sample_duplicates, collapse = ", "),
-         call. = FALSE)
-  }
-  validation_results$sample_names <- "... All sample names are unique"
 
-  # Check injection sequence uniqueness
+  if (length(sample_duplicates) > 0) {
+    if (is.null(merge_duplicate_samples_by)) {
+      stop("Duplicate sample names found: ", paste(sample_duplicates, collapse = ", "),
+           ". Set merge_duplicate_samples_by to 'mean' or 'median' to merge duplicates.",
+           call. = FALSE)
+    } else {
+      validation_results$sample_names <- paste0("... Duplicate sample names found: ",
+                                                paste(sample_duplicates, collapse = ", "),
+                                                " (will be merged by ", merge_duplicate_samples_by, ")")
+    }
+  } else {
+    validation_results$sample_names <- "... All sample names are unique"
+  }
+
+  # Check injection sequence uniqueness (after potential merging)
   injection_seq <- as.numeric(raw_data$Injection)
   if (any(is.na(injection_seq))) {
     stop("Non-numeric values found in Injection sequence", call. = FALSE)
   }
-
-  injection_duplicates <- find_duplicates(injection_seq)
-  if (length(injection_duplicates) > 0) {
-    stop("Duplicate injection sequences found: ", paste(injection_duplicates, collapse = ", "),
-         call. = FALSE)
-  }
-  validation_results$injection_sequence <- "... All injection sequences are unique"
 
   # Check feature names uniqueness
   required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
@@ -465,12 +527,102 @@ find_duplicates <- function(x) {
   unique(x[duplicated(x) | duplicated(x, fromLast = TRUE)])
 }
 
+#' Merge Duplicate Samples
+#' @keywords internal
+merge_duplicate_samples <- function(raw_data, method, verbose) {
+
+  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
+                        "Batch", "Injection", "Normalization", "Response")
+
+  # Separate metadata and feature columns
+  metadata_cols <- raw_data[, required_headers, drop = FALSE]
+  feature_cols <- raw_data[, !colnames(raw_data) %in% required_headers, drop = FALSE]
+
+  # Convert feature columns to numeric
+  feature_cols[] <- lapply(feature_cols, function(x) {
+    as.numeric(as.character(x))
+  })
+
+  # Combine for grouping
+  combined_data <- cbind(metadata_cols, feature_cols)
+
+  # Find duplicate samples
+  sample_names <- as.character(combined_data$Sample)
+  duplicate_samples <- unique(sample_names[duplicated(sample_names)])
+
+  if (verbose && length(duplicate_samples) > 0) {
+    message("... Found ", length(duplicate_samples), " unique sample(s) with duplicates: ",
+            paste(duplicate_samples, collapse = ", "))
+  }
+
+  # Split data into duplicates and non-duplicates
+  is_duplicate <- sample_names %in% duplicate_samples
+  non_dup_data <- combined_data[!is_duplicate, , drop = FALSE]
+  dup_data <- combined_data[is_duplicate, , drop = FALSE]
+
+  if (nrow(dup_data) > 0) {
+    # Process duplicates
+    merged_list <- list()
+
+    for (sample in duplicate_samples) {
+      sample_rows <- dup_data[dup_data$Sample == sample, , drop = FALSE]
+
+      # Keep metadata from first occurrence
+      merged_row <- sample_rows[1, required_headers, drop = FALSE]
+
+      # Set Injection to minimum value among duplicates
+      merged_row$Injection <- min(as.numeric(sample_rows$Injection), na.rm = TRUE)
+
+      # Merge feature values
+      feature_data <- sample_rows[, !colnames(sample_rows) %in% required_headers, drop = FALSE]
+
+      if (method == "mean") {
+        merged_features <- colMeans(feature_data, na.rm = TRUE)
+      } else if (method == "median") {
+        merged_features <- apply(feature_data, 2, median, na.rm = TRUE)
+      }
+
+      merged_features_df <- as.data.frame(t(merged_features))
+      merged_row <- cbind(merged_row, merged_features_df)
+
+      merged_list[[sample]] <- merged_row
+    }
+
+    # Combine merged duplicates
+    merged_dup_data <- do.call(rbind, merged_list)
+
+    # Combine with non-duplicates
+    result <- rbind(non_dup_data, merged_dup_data)
+  } else {
+    result <- non_dup_data
+  }
+
+  # Reset row names
+  rownames(result) <- NULL
+
+  if (verbose) {
+    message("... Merged ", nrow(combined_data) - nrow(result), " duplicate sample(s)")
+    message("... Final sample count: ", nrow(result))
+  }
+
+  return(result)
+}
+
 #' Sort Data by Injection Sequence
 #' @keywords internal
 sort_by_injection_sequence <- function(raw_data) {
   # Convert injection to numeric and sort
   raw_data$Injection <- as.numeric(raw_data$Injection)
   raw_data <- raw_data[order(raw_data$Injection), ]
+
+  # Check for duplicate injections after merging
+  injection_duplicates <- find_duplicates(raw_data$Injection)
+  if (length(injection_duplicates) > 0) {
+    stop("Duplicate injection sequences found after merging: ",
+         paste(injection_duplicates, collapse = ", "),
+         call. = FALSE)
+  }
+
   return(raw_data)
 }
 
@@ -592,8 +744,10 @@ generate_metadata_summary <- function(raw_data) {
     total_samples = nrow(raw_data_samples),
     total_features = ncol(raw_data_samples) - 9,
     groups = table(raw_data_samples$Group),
+    unique_groups = unique(raw_data_samples$Group),
     groups2 = table(raw_data_samples$Group2),
     batches = length(unique(raw_data_samples$Batch)),
+    unique_batches = unique(raw_data_samples$Batch),
     qc_samples = sum(grepl("QC", raw_data_samples$Group, ignore.case = TRUE)),
     injection_range = range(as.numeric(raw_data_samples$Injection), na.rm = TRUE),
     missing_data_summary = list(

@@ -170,12 +170,12 @@ perform_PreprocessingPeakData <- function(
 
     # Numeric parameter validation with optimized checks
     numeric_params <- list(
-      filterMissing = list(value = filterMissing, range = c(1, 100)),
+      filterMissing = list(value = filterMissing, range = c(0, 100)),
       denMissing = list(value = denMissing, range = c(1, 100)),
       spline_smooth_param = list(value = spline_smooth_param, range = c(0, 1)),
       min_QC = list(value = min_QC, range = c(1, Inf)),
-      filterMaxRSD = list(value = filterMaxRSD, range = c(1, 100)),
-      filterMaxVarSD = list(value = filterMaxVarSD, range = c(1, 100))
+      filterMaxRSD = list(value = filterMaxRSD, range = c(0, 100)),
+      filterMaxVarSD = list(value = filterMaxVarSD, range = c(0, 100))
     )
 
     for (param_name in names(numeric_params)) {
@@ -300,10 +300,11 @@ perform_PreprocessingPeakData <- function(
 
   # Replace the auto_merge_replicates case TRUE but there are no replicates found
   if (auto_merge_replicates) {
-    if (sum(df$Replicate) == 0) {
-      auto_merge_replicates = FALSE
-      # auto_merge_replicates2 = "TRUE -> FALSE"
-      msg("auto_merge_replicates was set to FALSE since there are no Technical Replicates found, i.e., the 'Replicate' row is empty.")
+    if (all(is.na(data_transposed$Replicate) | data_transposed$Replicate == "")) {
+      # auto_merge_replicates <- FALSE
+      listPreprocessed$Parameters$auto_merge_replicates <- FALSE
+      # auto_merge_replicates2 <- "TRUE -> FALSE"
+      msg("auto_merge_replicates was set to FALSE since there are no Technical Replicates found, i.e., the 'Replicate' row is empty or contains only missing values.")
     }
   }
 
