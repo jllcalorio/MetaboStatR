@@ -4,7 +4,7 @@
 \alias{validate_uniqueness_constraints}
 \title{Validate Uniqueness Constraints}
 \usage{
-validate_uniqueness_constraints(raw_data)
+validate_uniqueness_constraints(raw_data, merge_duplicate_samples_by, verbose)
 }
 \description{
 Validate Uniqueness Constraints

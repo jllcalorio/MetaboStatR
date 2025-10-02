@@ -9,7 +9,8 @@ initialize_results_object(
   sheet_name,
   validate_qc,
   allow_missing_optional,
-  clean_names
+  clean_names,
+  merge_duplicate_samples_by
 )
 }
 \description{

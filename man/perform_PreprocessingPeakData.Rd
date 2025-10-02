@@ -27,8 +27,8 @@ perform_PreprocessingPeakData(
   filterMaxRSD = 30,
   filterMaxRSD_by = "EQC",
   filterMaxVarSD = 10,
-  verbose = TRUE,
-  auto_merge_replicates = TRUE
+  auto_merge_replicates = TRUE,
+  verbose = TRUE
 )
 }
 \arguments{
@@ -111,9 +111,9 @@ Default: "Normalization" (if present, otherwise, "sum")}
 
 \item{filterMaxVarSD}{Numeric. Remove \verb{nth percentile} of features with lowest variability. Set to \code{NULL} to skip this step.}
 
-\item{verbose}{Logical. Whether to print detailed progress messages. Default TRUE.}
-
 \item{auto_merge_replicates}{Logical. If \code{TRUE} (default), automatically merge technical replicates based on SubjectID and Replicate columns. Only applies when both columns contain meaningful values.}
+
+\item{verbose}{Logical. Whether to print detailed progress messages. Default \code{TRUE.}}
 }
 \value{
 A list containing results from all preprocessing steps and a plot of six random features/metabolites before and after drift- and batch correction (if \code{TRUE}).

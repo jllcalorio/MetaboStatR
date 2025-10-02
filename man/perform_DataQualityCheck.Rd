@@ -12,6 +12,7 @@ perform_DataQualityCheck(
   validate_qc = TRUE,
   allow_missing_optional = TRUE,
   clean_names = TRUE,
+  merge_duplicate_samples_by = NULL,
   verbose = TRUE
 )
 }
@@ -36,6 +37,11 @@ optional metadata rows (SubjectID, Replicate, Normalization, Response). Default 
 
 \item{clean_names}{Logical indicating whether to clean special characters from names.
 Default is TRUE.}
+
+\item{merge_duplicate_samples_by}{Character string specifying how to handle duplicate
+sample names. Options: NULL (default, throws error on duplicates), "mean" (average
+duplicate samples), "median" (take median of duplicate samples). If no duplicates exist,
+this parameter is ignored. When merging, metadata from the first occurrence is retained.}
 
 \item{verbose}{Logical indicating whether to display progress messages. Default is TRUE.}
 }
@@ -62,6 +68,7 @@ Key validation checks include:
 \item Proper QC sample annotation (empty values in SubjectID, Replicate, Normalization, Response for QC samples)
 \item Numeric validation of feature/metabolite data
 \item Character cleaning and standardization of identifiers
+\item Optional merging of duplicate samples by mean or median
 }
 }
 \details{
@@ -81,6 +88,12 @@ The input data must follow a specific structure:
 
 Missing values should be left blank or encoded as 0. QC samples in the Group row
 must have empty values in SubjectID, Replicate, Normalization, and Response rows.
+
+When \code{merge_duplicate_samples_by} is set to "mean" or "median", duplicate samples
+are identified by their Sample name and merged accordingly. The metadata (SubjectID,
+Replicate, Group, Group2, Batch, Normalization, Response) from the first occurrence
+is retained, while the Injection value is set to the minimum injection number among
+duplicates. Feature/metabolite values are aggregated using the specified method.
 }
 \examples{
 \dontrun{
@@ -98,6 +111,18 @@ result <- perform_DataQualityCheck(
   file_location = "path/to/data.csv",
   separator = ";",
   skip_rows = 1
+)
+
+# Merge duplicate samples by taking their mean
+result <- perform_DataQualityCheck(
+  file_location = "path/to/data.xlsx",
+  merge_duplicate_samples_by = "mean"
+)
+
+# Merge duplicate samples by taking their median
+result <- perform_DataQualityCheck(
+  file_location = "path/to/data.xlsx",
+  merge_duplicate_samples_by = "median"
 )
 
 # Access results

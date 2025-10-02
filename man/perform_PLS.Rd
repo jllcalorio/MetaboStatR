@@ -25,7 +25,7 @@ perform_PLS(
 \arguments{
 \item{data}{A list containing processed data with the following required components:
 \itemize{
-\item \code{data_scaledPLS_rsdFiltered_varFiltered}: Matrix or data.frame of processed data
+\item \code{data_scaledPLS_varFiltered}: Matrix or data.frame of processed data
 \item \code{Metadata}: Data.frame containing sample metadata with 'Group' and 'Group_' columns
 }}
 
@@ -93,13 +93,13 @@ comprehensive analysis with visualization and feature importance assessment.
 \dontrun{
 # Example data structure
 data <- list(
-  data_scaledPLS_rsdFiltered_varFiltered = matrix(rnorm(1000), nrow = 50, ncol = 20),
+  data_scaledPLS_varFiltered = matrix(rnorm(1000), nrow = 50, ncol = 20),
   Metadata = data.frame(
     Group = c(rep(c("Control", "Treatment"), c(20, 20)), rep(c("SQC", "EQC"), c(5, 5))),
     Group_ = c(rep(c("Control", "Treatment"), c(20, 20)), rep("QC", 10))
   )
 )
-colnames(data$data_scaledPLS_rsdFiltered_varFiltered) <- paste0("Feature_", 1:20)
+colnames(data$data_scaledPLS_varFiltered) <- paste0("Feature_", 1:20)
 
 # Perform OPLS-DA
 results <- perform_PLS(data, method = "oplsda")
