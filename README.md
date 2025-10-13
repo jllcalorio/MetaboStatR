@@ -2,6 +2,8 @@
 
 This repository contains a set of R scripts designed to analyze metabolomics data, where each row represents a sample and each column represents a metabolite. The repository aims to provide a comprehensive workflow for the preprocessing, analysis, and visualization of metabolomics data, with a focus on handling multiple groups and batches.
 
+A readable documentation can be found [here](https://jllcalorio.github.io/MetaboStatR/reference/index.html) that was built using [pkgdown](https://pkgdown.r-lib.org/).
+
 # Objective
 
 The primary goal of this repository is to facilitate the analysis of metabolomics data, ensuring reproducibility and transparency. It covers key steps from raw data processing to statistical analysis and visualization, making it suitable for users new to metabolomics or experienced data analysts.
