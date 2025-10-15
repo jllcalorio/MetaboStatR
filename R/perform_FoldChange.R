@@ -9,7 +9,7 @@
 #'
 #' @param data List. A preprocessed data object returned by `perform_PreprocessingPeakData()`
 #'   or similar preprocessing functions. Must contain:
-#'   - `$data_scaledPCA_rsdFiltered_varFiltered`: Numeric matrix/data.frame of peak data
+#'   - `$data_scaledPCA_varFiltered`: Numeric matrix/data.frame of peak data
 #'   - `$Metadata`: Data.frame with at least a 'Group' column
 #' @param arrangeLevels Character vector. Optional custom ordering for group levels.
 #'   Must contain all unique group names present in the data (excluding QC samples).
@@ -145,7 +145,7 @@ perform_FoldChange <- function(
     stop("'data' must be a list object from preprocessing functions.")
   }
 
-  required_components <- c("data_scaledPCA_rsdFiltered_varFiltered", "Metadata")
+  required_components <- c("data_scaledPCA_varFiltered", "Metadata")
   missing_components <- setdiff(required_components, names(data))
   if (length(missing_components) > 0) {
     stop(paste("Missing required components in 'data':",
@@ -180,7 +180,12 @@ perform_FoldChange <- function(
 #' Extract peak data from input object
 #' @noRd
 .extract_peak_data <- function(data) {
-  peak_data <- data$data_scaledPCA_rsdFiltered_varFiltered
+  # Changed from "data_scaledPCA_varFiltered" to "data_normalized"
+  # Based on
+  # "https://www.metaboanalyst.ca/resources/vignettes/Statistical_Analysis_Module.html#:~:
+  # text=FC%20is%20calculated%20as%20the%20ratio%20between%20two%20group%20means%20using%20the
+  # %20data%20before%20column%2Dwise%20normalization%20was%20applied."
+  peak_data <- data$data_normalized
 
   if (is.null(peak_data)) {
     stop("Peak data component is NULL.")

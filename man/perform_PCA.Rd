@@ -10,6 +10,7 @@ perform_PCA(
   includeQC = FALSE,
   arrangeLevels = NULL,
   scoresEllipse = TRUE,
+  scoresColorVar = NULL,
   scoresTitle = NULL,
   scoresLegend = NULL,
   includeScree = TRUE,
@@ -38,6 +39,10 @@ The format could be "c('group1', 'group2', ...)". Defaults to \code{NULL} which
 sorts the groups in alphabetical order.}
 
 \item{scoresEllipse}{Boolean. If \code{TRUE} (default), adds an ellipse in the scores plot.}
+
+\item{scoresColorVar}{String. Optional. Column name from metadata to use for
+continuous gradient coloring in scores plots (e.g., "Time", "Concentration").
+If \code{NULL} (default), uses discrete \code{Group} colors instead.}
 
 \item{scoresTitle}{String or Vector. The scores plot title(s). Can be a single string
 (applied to all plots) or a vector of strings (one for each plot). If \code{NULL},
@@ -85,24 +90,23 @@ will produce a separate scores plot.
 }
 \examples{
 \dontrun{
-# Generate 3 different scores plots plus scree plot
+# Standard PCA with discrete groups
 multi_plots <- perform_PCA(
   data = data_from_perform_PreprocessingPeakData_function,
-  scorePC = list(c(1,2), c(1,3), c(2,3)),
-  includeQC = FALSE,
-  scoresEllipse = TRUE,
-  includeScree = TRUE,
-  screeWhat = "variance",
-  screeType = "both"
+  scorePC = list(c(1,2), c(1,3)),
+  includeQC = FALSE
 )
 
-# Access individual plots
-plot1 <- multi_plots$plots[[1]]  # PC1 vs PC2
-plot2 <- multi_plots$plots[[2]]  # PC1 vs PC3
-scree <- multi_plots$scree_plot  # Scree plot
+# PCA with gradient coloring by a continuous variable (e.g., "Time")
+multi_plots_time <- perform_PCA(
+  data = data_from_perform_PreprocessingPeakData_function,
+  scorePC = list(c(1,2)),
+  includeQC = TRUE,
+  scoresColorVar = "Time",       # column in Metadata
+  scoresLegend = "Collection Time"
+)
 
-# Display all plots
-plot_PCAScreeScores(multi_plots, include_scree = TRUE)
+plot_PCAScreeScores(multi_plots_time)
 }
 }
 \references{

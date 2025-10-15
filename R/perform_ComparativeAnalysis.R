@@ -34,7 +34,7 @@
 #'
 #' @param data List. Output from \code{perform_PreprocessingPeakData} function containing:
 #'   \itemize{
-#'     \item \code{data_scaledPCA_rsdFiltered_varFiltered}: Numeric matrix of processed metabolite data
+#'     \item \code{data_scaledPCA_varFiltered}: Numeric matrix of processed metabolite data
 #'     \item \code{Metadata}: Data frame with sample metadata including 'Group' column
 #'   }
 #' @param adjust_p_method Character. Method for p-value adjustment. Default is "BH".
@@ -185,7 +185,7 @@ perform_ComparativeAnalysis <- function(
   # Generate plots if requested
   if (!is.null(plot_metabolites) && length(plot_metabolites) > 0) {
     if (verbose) cat("Generating plots for", length(plot_metabolites), "metabolites...\n")
-    results_list$plots <- .generate_plots(
+    results_list$plots <- .generate_plots_ca(
       plot_metabolites, df, groups, final_results$results,
       adjust_p_method, verbose
     )
@@ -218,7 +218,7 @@ perform_ComparativeAnalysis <- function(
     stop("Input 'data' must be a list from perform_PreprocessingPeakData function")
   }
 
-  required_elements <- c("data_scaledPCA_rsdFiltered_varFiltered", "Metadata")
+  required_elements <- c("data_scaledPCA_varFiltered", "Metadata")
   missing_elements <- setdiff(required_elements, names(data))
   if (length(missing_elements) > 0) {
     stop("Missing required data elements: ", paste(missing_elements, collapse = ", "))
@@ -233,9 +233,9 @@ perform_ComparativeAnalysis <- function(
     stop("Metadata must contain a 'Group' column")
   }
 
-  if (!is.matrix(data$data_scaledPCA_rsdFiltered_varFiltered) &&
-      !is.data.frame(data$data_scaledPCA_rsdFiltered_varFiltered)) {
-    stop("data_scaledPCA_rsdFiltered_varFiltered must be a matrix or data frame")
+  if (!is.matrix(data$data_scaledPCA_varFiltered) &&
+      !is.data.frame(data$data_scaledPCA_varFiltered)) {
+    stop("data_scaledPCA_varFiltered must be a matrix or data frame")
   }
 
   # Check p-value adjustment method
@@ -283,7 +283,7 @@ perform_ComparativeAnalysis <- function(
   }
 
   # Check data dimensions compatibility
-  if (nrow(data$data_scaledPCA_rsdFiltered_varFiltered) != nrow(data$Metadata)) {
+  if (nrow(data$data_scaledPCA_varFiltered) != nrow(data$Metadata)) {
     stop("Number of rows in data and metadata must match")
   }
 }
@@ -326,7 +326,7 @@ perform_ComparativeAnalysis <- function(
     stop("No samples remaining after removing QC samples")
   }
 
-  df <- data$data_scaledPCA_rsdFiltered_varFiltered[non_qc_indices, , drop = FALSE]
+  df <- data$data_scaledPCA_varFiltered[non_qc_indices, , drop = FALSE]
   groups <- factor(groups_char[non_qc_indices])
 
   # Validate data dimensions
@@ -1105,7 +1105,7 @@ perform_ComparativeAnalysis <- function(
 }
 
 # Helper function: Generate plots with better error handling
-.generate_plots <- function(plot_metabolites, df, groups, results, adjust_p_method, verbose) {
+.generate_plots_ca <- function(plot_metabolites, df, groups, results, adjust_p_method, verbose) {
   if (!requireNamespace("ggstatsplot", quietly = TRUE)) {
     warning("ggstatsplot package not available. Skipping plot generation.")
     return(list())

@@ -1,0 +1,330 @@
+---
+title: "Introduction to MetaboStatR"
+author: "John Lennon L. Calorio"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Introduction to MetaboStatR}
+  %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  fig.align = "center"
+)
+```
+
+## Overview
+
+MetaboStatR provides a comprehensive workflow for analyzing metabolomics data. This package is designed to handle the complete pipeline from raw data preprocessing to statistical analysis and visualization, with particular emphasis on managing multiple groups and batch effects.
+
+## What is Metabolomics?
+
+Metabolomics is the large-scale study of small molecules, commonly known as metabolites, within cells, biofluids, tissues, or organisms. These metabolites are the end products of cellular processes and their levels can be regarded as the ultimate response of biological systems to genetic or environmental changes.
+
+## Key Features of MetaboStatR
+
+-   **Comprehensive preprocessing**: Missing value handling, normalization, transformation, and scaling
+-   **Batch effect correction**: Remove technical variation between experimental runs
+-   **Multivariate analysis**: PCA, PLS-DA, OPLS-DA, sPLS-DA for exploratory analysis and biomarker discovery
+-   **Statistical testing**: Identify significantly different metabolites between groups
+-   **Rich visualization**: Generate publication-ready plots including volcano plots, PCA plots, and more
+-   **Reproducible workflow**: Standardized pipeline ensuring consistent results
+
+## Installation
+
+```{r eval=FALSE}
+# Install from GitHub (once package is properly structured)
+devtools::install_github("jllcalorio/MetaboStatR")
+
+# Load the package
+library(MetaboStatR)
+```
+
+## Data Format Requirements
+
+Before using MetaboStatR, ensure your data follows the correct format:
+
+### Required Structure
+
+-   **1st row:** Unique sample names
+-   **2nd row:** Subject ID (used only when 3rd row "Replicate" is not empty
+-   **3rd row:** Technical replicate IDs
+-   **4th row:** Groups
+-   **5th row:** Unique batch numbers
+-   **6th row:** Uniqee injection sequences
+-   **7th row:** Values used for normalization (e.g., specific weight)
+-   **8th row:** Response (for cases when the independent variable is not "Group" in 4th row, but rather numeric)
+
+### Example Data Structure with Correct 1st Column Entries
+
+```{r eval=FALSE}
+library(dplyr)
+
+# Example data format
+sample_data <- data.frame(
+  Sample = c("S001", "S002", "S003", "S004", "S005", "S006"),
+  SubjectID = rep(NA, 6),
+  Replicate = rep(NA, 6),
+  Group = c("Control", "Control", "Control", "Treatment", "Treatment", "Treatment"),
+  Batch = c("Batch1", "Batch1", "Batch2", "Batch1", "Batch2", "Batch2"),
+  Injection = c(1, 2, 3 ,4, 5, 6),
+  Normalization = c(3.5, 1.3, 5.6, 6.3, 2, 1.2),
+  Response = rep(NA, 6)
+) %>% t()
+
+head(sample_data)
+```
+
+## Basic Workflow
+
+### 1. Load and Inspect Data
+
+```{r eval=FALSE}
+# Quality-check your data
+data <- perform_DataQualityCheck("file_location_of_your_metabolomics_data.csv")
+```
+
+### 2. Data Preprocessing
+
+The preprocessing step is crucial for metabolomics data quality. These preprocessing steps (in specific order) include:
+
+1.  Removal of outliers (perceived)
+2.  Filtering features/metabolites with too many missing values
+3.  Missing value imputation
+4.  Drift- and/or batch correction
+5.  Removal of uncorrected features
+6.  Data normalization
+7.  Data transformation
+8.  Data scaling
+9.  Filtering features/metabolites via Relative Standard Deviation (RSD)
+10. Filtering features/metabolites with low variance across groups
+
+```{r eval=FALSE}
+# Using the default parameters
+processed_data <- perform_PreprocessingPeakData(
+  raw_data = list_from_perform_DataQualityCheck_function
+)
+```
+
+### 3. Principal Component Analysis (PCA)
+
+Explore data structure and quality:
+
+```{r eval=FALSE}
+# Perform PCA and produce a scree plot and 3 scores plots
+pca_results <- perform_PCA(
+  processed_data,
+  #   PC1 vs 2  Pc1 vs 3  PC2 vs 3
+  list(c(1, 2), c(1, 3), c(2, 3))
+  )
+
+# Generate all 4 PCA plots in 1 plot
+display_AllPlots(pca_results)
+```
+
+### 4. Orthogonal-Partial Least Squares Discriminant Analysis (OPLS-DA)
+
+Identify discriminating metabolites:
+
+```{r eval=FALSE}
+# Perform OPLS-DA
+plsda_results <- perform_PLS(
+  data = processed_data,
+  method = "oplsda",
+  arrangeLevels = c("Severe Case", "Less Severe Case", "Control")
+)
+
+# "arrangeLevels" is suggested to be arranged where severe cases first then control at the end
+```
+
+### 5. Fold Change Analysis
+
+Calculate effect sizes:
+
+```{r eval=FALSE}
+# Calculate fold changes
+fc_results <- calculate_fold_changes(
+  data = processed_data,
+  arrangeLevels = c("Severe Case", "Less Severe Case", "Control")
+)
+
+# "arrangeLevels" is suggested to be arranged where severe cases first then control at the end
+```
+
+### 6. Statistical Analysis
+
+Test for significant differences between groups:
+
+```{r eval=FALSE}
+# Perform statistical tests
+stats_results <- perform_ComparativeAnalysis(
+  data = processed_data,
+  adjust_p_method = "BH"
+)
+```
+
+### 7. AUROC
+
+```{r eval=FALSE}
+auroc_results <- perform_AUROC(
+  data_PP = processed_data, # The list from preprocessing
+  data_DR = plsda_results,  # The list from OPLS-DA
+  data_FC = fc_results,     # The list from fold change analysis
+  data_CA = stats_results,  # The list from statistical analysis
+  arrangeLevels = c("Control", "Less Severe Case", "Severe Case")
+)
+
+# UNLIKE OPLS-DA and fold change analysis, "arrangeLevels" in AUROC is suggested to be arranged where controls first then severe cases at the end
+```
+
+### 8. Regression
+
+```{r eval=FALSE}
+regression_results <- perform_Regression(
+  data = processed_data,
+  method = "enet"
+)
+
+# method options are "enet" for Elastic net regression
+#                    "lasso" for LASSO
+#                    "both" to perform both enet and lasso
+```
+
+### 9. Export data frames and tables to Excel
+
+Each item in the "list" parameter will be checked for data frames, tibbles and the likes, that can be exported to Excel. Each item in the list will have its own Excel workbook. Each data frame will have its own worksheet. Long names will be shortened to match Excel's limit.
+
+```{r eval=FALSE}
+perform_Export2Excel(
+  results = list(
+    processed_data,
+    pca_results,
+    plsda_results,
+    fc_results,
+    stats_results,
+    auroc_results,
+    regression_results
+  ),
+  folder_name = "Results_Folder", # Which folder to store the results
+  file_name = "Results_Export" # Base file names of the exported data frames
+)
+
+# Note:
+# "file_name" can accept a list of the same length as "results" to specify the file name of each list
+```
+
+### 10. Export plots to images
+
+Plots and figures are exported to PNG, JPG, etc.
+
+```{r eval=FALSE}
+perform_ExportPlots2Image(
+  results = list(
+    processed_data,
+    pca_results,
+    plsda_results,
+    fc_results,
+    stats_results,
+    auroc_results,
+    regression_results
+  ),
+  folder_name = "Plots_Export",
+  file_prefix = "Plot",
+  image_format = "png",
+  width = 15,
+  height = 12,
+  dpi = 300
+)
+```
+
+### 11. Visualization
+
+Create publication-ready plots:
+
+```{r eval=FALSE}
+# Volcano plot
+plot_Volcano(
+  PPData = processed_data,
+  FCData = fc_results,
+  CAData = stats_results,
+  arrangeLevels = c("Severe Case", "Less Severe Case", "Control"),
+  fcUP = 2, # Fold change threshold
+  fcDown = 0.5, # Fold change threshold
+  adjpvalue = 0.05 # Adjusted p-value threshold
+)
+```
+
+## Output Interpretation
+
+### Understanding Results
+
+-   **PCA plots**: Show overall data structure and potential outliers
+-   **OPLS-DA plots**: Reveal group separations and discriminating features\
+-   **VIP scores**: Rank metabolites by importance for group discrimination
+-   **Volcano plots**: Visualize both statistical significance and biological relevance
+-   **p-value distributions**: Assess the quality of statistical tests
+
+### Typical Workflow Results
+
+After running the complete workflow, you should have:
+
+1.  **Quality-controlled data**: With missing values handled and technical effects removed
+2.  **Exploratory analysis results**: PCA and OPLS-DA plots showing data structure
+3.  **Statistical test results**: p-values and fold changes for each metabolite
+4.  **Visualizations**: Publication-ready plots highlighting significant findings
+5.  **Biomarker candidates**: List of metabolites significantly different between groups
+
+## Best Practices
+
+### Data Quality
+
+-   Ensure uniqueness of samples and feature names, and injection sequences
+-   Always examine raw data distributions before preprocessing
+-   Check for batch effects using PCA plots
+-   Validate important findings using orthogonal approaches
+
+### Statistical Considerations
+
+-   Consider multiple testing correction for metabolomics datasets
+-   Validate biomarkers in independent datasets when possible
+
+### Reproducibility
+
+-   Document all preprocessing steps and parameters
+-   Use version control for analysis scripts
+-   Provide session information in reports
+
+## Common Issues and Solutions
+
+### Missing Values
+
+-   **Problem**: High proportion of missing values
+-   **Solution**: Adjust missing value thresholds or use specialized imputation methods
+
+### Batch Effects
+
+-   **Problem**: Technical variation between batches
+-   **Solution**: Include batch information and apply correction methods
+
+### Non-normal Data
+
+-   **Problem**: Highly skewed metabolite distributions
+-   **Solution**: Apply appropriate transformations (log10, vsn) or use non-parametric tests
+
+## Getting Help
+
+For questions about MetaboStatR: - Check the function documentation: `?function_name` - Browse additional vignettes for specific topics - Report issues on GitHub: <https://github.com/jllcalorio/MetaboStatR/issues> - Contact: [jllcalorio\@gmail.com](mailto:jllcalorio@gmail.com){.email}
+
+## Session Information
+
+```{r}
+sessionInfo()
+```

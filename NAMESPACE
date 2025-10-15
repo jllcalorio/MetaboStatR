@@ -3,7 +3,6 @@
 S3method(print,multipleScoresPlots)
 S3method(print,pls_results)
 export(extract_RegressionResults)
-export(extract_auroc_results)
 export(get_ScreeData)
 export(get_auroc_summary)
 export(perform_AUROC)

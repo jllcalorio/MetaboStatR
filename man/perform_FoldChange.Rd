@@ -17,7 +17,7 @@ perform_FoldChange(
 \item{data}{List. A preprocessed data object returned by \code{perform_PreprocessingPeakData()}
 or similar preprocessing functions. Must contain:
 \itemize{
-\item \verb{$data_scaledPCA_rsdFiltered_varFiltered}: Numeric matrix/data.frame of peak data
+\item \verb{$data_scaledPCA_varFiltered}: Numeric matrix/data.frame of peak data
 \item \verb{$Metadata}: Data.frame with at least a 'Group' column
 }}
 

@@ -18,7 +18,7 @@ perform_ComparativeAnalysis(
 \arguments{
 \item{data}{List. Output from \code{perform_PreprocessingPeakData} function containing:
 \itemize{
-\item \code{data_scaledPCA_rsdFiltered_varFiltered}: Numeric matrix of processed metabolite data
+\item \code{data_scaledPCA_varFiltered}: Numeric matrix of processed metabolite data
 \item \code{Metadata}: Data frame with sample metadata including 'Group' column
 }}
 

@@ -1,3 +1,5 @@
+'ORIGINAL PCA CODE'
+
 #' Perform Principal Component Analysis (PCA)
 #'
 #' @description
@@ -17,6 +19,9 @@
 #'   The format could be "c('group1', 'group2', ...)". Defaults to `NULL` which
 #'   sorts the groups in alphabetical order.
 #' @param scoresEllipse Boolean. If `TRUE` (default), adds an ellipse in the scores plot.
+#' @param scoresColorVar String. Optional. Column name from metadata to use for
+#'   continuous gradient coloring in scores plots (e.g., "Time", "Concentration").
+#'   If `NULL` (default), uses discrete `Group` colors instead.
 #' @param scoresTitle String or Vector. The scores plot title(s). Can be a single string
 #'   (applied to all plots) or a vector of strings (one for each plot). If `NULL`,
 #'   defaults to "PCA Scores Plot (PC\{i\} vs PC\{j\})".
@@ -59,31 +64,32 @@
 #'
 #' @examples
 #' \dontrun{
-#' # Generate 3 different scores plots plus scree plot
+#' # Standard PCA with discrete groups
 #' multi_plots <- perform_PCA(
 #'   data = data_from_perform_PreprocessingPeakData_function,
-#'   scorePC = list(c(1,2), c(1,3), c(2,3)),
-#'   includeQC = FALSE,
-#'   scoresEllipse = TRUE,
-#'   includeScree = TRUE,
-#'   screeWhat = "variance",
-#'   screeType = "both"
+#'   scorePC = list(c(1,2), c(1,3)),
+#'   includeQC = FALSE
 #' )
 #'
-#' # Access individual plots
-#' plot1 <- multi_plots$plots[[1]]  # PC1 vs PC2
-#' plot2 <- multi_plots$plots[[2]]  # PC1 vs PC3
-#' scree <- multi_plots$scree_plot  # Scree plot
+#' # PCA with gradient coloring by a continuous variable (e.g., "Time")
+#' multi_plots_time <- perform_PCA(
+#'   data = data_from_perform_PreprocessingPeakData_function,
+#'   scorePC = list(c(1,2)),
+#'   includeQC = TRUE,
+#'   scoresColorVar = "Time",       # column in Metadata
+#'   scoresLegend = "Collection Time"
+#' )
 #'
-#' # Display all plots
-#' plot_PCAScreeScores(multi_plots, include_scree = TRUE)
+#' plot_PCAScreeScores(multi_plots_time)
 #' }
+
 perform_PCA <- function(
     data,
     scorePC = list(c(1, 2), c(1, 3), c(2, 3)),
     includeQC = FALSE,
     arrangeLevels = NULL,
     scoresEllipse = TRUE,
+    scoresColorVar = NULL,
     scoresTitle = NULL,
     scoresLegend = NULL,
     includeScree = TRUE,
@@ -544,6 +550,14 @@ perform_PCA <- function(
     )
   }
 
+  # Add column for gradient if requested
+  if (!is.null(scoresColorVar)) {
+    if (!scoresColorVar %in% colnames(metadata_subset)) {
+      stop(paste0("scoresColorVar '", scoresColorVar, "' not found in metadata."))
+    }
+    base_scores_df$ColorVar <- metadata_subset[[scoresColorVar]]
+  }
+
   # Apply arrangeLevels if specified
   if (!is.null(arrangeLevels)) {
     # Check if all specified levels exist in the data
@@ -588,29 +602,29 @@ perform_PCA <- function(
     }
 
     # Create the plot with optimized aesthetics
-    scores_plot <- ggplot2::ggplot(df_scores,
-                                   ggplot2::aes(x = PC1,
-                                                y = PC2,
-                                                color = Group,
-                                                shape = Group)) +
-      ggplot2::geom_point(size = 3, alpha = 0.8) +
-      ggplot2::geom_text(ggplot2::aes(label = Label),
-                         vjust = -0.7,
-                         hjust = 0.5,
-                         size = 2.8,
-                         alpha = 0.7)
+    if (is.null(scoresColorVar)) {
+      scores_plot <- ggplot2::ggplot(df_scores,
+                                     ggplot2::aes(x = PC1, y = PC2,
+                                                  color = Group, shape = Group)) +
+        ggplot2::geom_point(size = 3, alpha = 0.8)
+    } else {
+      scores_plot <- ggplot2::ggplot(df_scores,
+                                     ggplot2::aes(x = PC1, y = PC2,
+                                                  color = ColorVar,
+                                                  shape = Group)) +
+        ggplot2::geom_point(size = 3, alpha = 0.9) +
+        viridis::scale_color_viridis(option = "plasma", name = scoresLegend)
+    }
 
-    # Add ellipses if requested
-    if (scoresEllipse && nlevels(df_scores$Group) > 1) {
-      # Check if each group has enough points for ellipse
+    # Add ellipses if requested and discrete coloring
+    if (scoresEllipse && is.null(scoresColorVar) && nlevels(df_scores$Group) > 1) {
       group_counts <- table(df_scores$Group)
       groups_for_ellipse <- names(group_counts)[group_counts >= 3]
-
       if (length(groups_for_ellipse) > 0) {
         df_ellipse <- df_scores[df_scores$Group %in% groups_for_ellipse, ]
         scores_plot <- scores_plot +
           ggplot2::stat_ellipse(data = df_ellipse,
-                                ggplot2::aes(group = Group, fill = Group),
+                                ggplot2::aes(group = Group, color = Group, fill = Group),
                                 level = 0.95,
                                 geom = "polygon",
                                 alpha = 0.2,
@@ -618,14 +632,9 @@ perform_PCA <- function(
       }
     }
 
-    # Complete the plot with improved theme
+    # Final styling
     scores_plot <- scores_plot +
-      ggplot2::labs(x = x_label,
-                    y = y_label,
-                    title = plot_title,
-                    color = scoresLegend,
-                    shape = scoresLegend,
-                    fill = scoresLegend) +
+      ggplot2::labs(x = x_label, y = y_label, title = plot_title) +
       ggplot2::theme_minimal() +
       ggplot2::theme(
         legend.position = "bottom",
@@ -635,6 +644,8 @@ perform_PCA <- function(
         legend.title = ggplot2::element_text(size = 11),
         legend.text = ggplot2::element_text(size = 10)
       )
+
+
 
     # Store the plot
     plots_list[[i]] <- scores_plot
