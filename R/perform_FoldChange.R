@@ -180,12 +180,12 @@ perform_FoldChange <- function(
 #' Extract peak data from input object
 #' @noRd
 .extract_peak_data <- function(data) {
-  # Changed from "data_scaledPCA_varFiltered" to "data_normalized"
+  # Changed from "data_scaledPCA_varFiltered" to "data_normalized" or "data_transformed"
   # Based on
   # "https://www.metaboanalyst.ca/resources/vignettes/Statistical_Analysis_Module.html#:~:
   # text=FC%20is%20calculated%20as%20the%20ratio%20between%20two%20group%20means%20using%20the
   # %20data%20before%20column%2Dwise%20normalization%20was%20applied."
-  peak_data <- data$data_normalized
+  peak_data <- data$data_transformed
 
   if (is.null(peak_data)) {
     stop("Peak data component is NULL.")
