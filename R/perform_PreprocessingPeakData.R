@@ -56,6 +56,12 @@
 #'    \item \code{"mean2SD"}: Pareto-scaling. Scale by mean divided by square-root of SD. Always use this for PLS-type analysis.
 #'    }
 #' @param dataScalePLS String. Data scaling for PLS analysis only. Same options as `dataScalePCA`.
+#' @param filterReference String. Which scaled dataset to use as reference for RSD and variance filtering. Options:
+#'  \itemize{
+#'    \item \code{"PCA"}: Use auto-scaled (or dataScalePCA) data as reference for filtering (default, more stringent)
+#'    \item \code{"PLS"}: Use pareto-scaled (or dataScalePLS) data as reference for filtering
+#'    \item \code{"both"}: Apply filters independently and keep only features passing in BOTH (intersection, most conservative)
+#'    }
 #' @param filterMaxRSD Numeric. Threshold for Relative Standard Deviation (RSD) filtering. Set to `NULL` to skip this step.
 #' @param filterMaxRSD_by String. Which QC samples to use for RSD filtering. Options:
 #'  \itemize{
@@ -107,6 +113,7 @@ perform_PreprocessingPeakData <- function(
     dataTransform               = "vsn",
     dataScalePCA                = "meanSD",
     dataScalePLS                = "mean2SD",
+    filterReference             = "PCA",
     filterMaxRSD                = 30,
     filterMaxRSD_by             = "EQC",
     filterMaxVarSD              = 10,
@@ -211,6 +218,7 @@ perform_PreprocessingPeakData <- function(
       dataTransform = c("none", "log2", "log10", "sqrt", "cbrt", "vsn", "glog"),
       dataScalePCA = c("none", "mean", "meanSD", "mean2SD"),
       dataScalePLS = c("none", "mean", "meanSD", "mean2SD"),
+      filterReference = c("PCA", "PLS", "both"),
       reference_method = c("mean", "median"),
       filterMaxRSD_by = c("SQC", "EQC", "both")
     )
@@ -258,6 +266,7 @@ perform_PreprocessingPeakData <- function(
       dataTransform = dataTransform,
       dataScalePCA = dataScalePCA,
       dataScalePLS = dataScalePLS,
+      filterReference = filterReference,
       filterMaxRSD = filterMaxRSD,
       filterMaxVarSD = filterMaxVarSD,
       auto_merge_replicates = auto_merge_replicates
@@ -1068,34 +1077,6 @@ perform_PreprocessingPeakData <- function(
     })
   }
 
-  # Apply RSD filtering
-  listPreprocessed$data_scaledPCA_rsdFiltered <- apply_rsd_filtering(
-    listPreprocessed$data_scaledPCA, filterMaxRSD, filterMaxRSD_by,
-    listPreprocessed$Metadata, "PCA"
-  )
-
-  listPreprocessed$data_scaledPLS_rsdFiltered <- apply_rsd_filtering(
-    listPreprocessed$data_scaledPLS, filterMaxRSD, filterMaxRSD_by,
-    listPreprocessed$Metadata, "PLS"
-  )
-
-  # Update dimensions for RSD filtered data
-  listPreprocessed$Dimensions <- rbind(
-    listPreprocessed$Dimensions,
-    data.frame(Step = "After RSD filtering (PCA)",
-               Samples = nrow(listPreprocessed$data_scaledPCA_rsdFiltered),
-               Features = ncol(listPreprocessed$data_scaledPCA_rsdFiltered))
-  )
-
-  listPreprocessed$Dimensions <- rbind(
-    listPreprocessed$Dimensions,
-    data.frame(Step = "After RSD filtering (PLS)",
-               Samples = nrow(listPreprocessed$data_scaledPLS_rsdFiltered),
-               Features = ncol(listPreprocessed$data_scaledPLS_rsdFiltered))
-  )
-
-  gc_if_needed()
-
   # Optimized variance filtering function
   apply_variance_filtering <- function(data, threshold, data_for) {
     if (is.null(threshold)) {
@@ -1135,16 +1116,100 @@ perform_PreprocessingPeakData <- function(
     })
   }
 
-  # Apply variance filtering
-  listPreprocessed$data_scaledPCA_varFiltered <- apply_variance_filtering(
-    listPreprocessed$data_scaledPCA_rsdFiltered, filterMaxVarSD, "PCA"
+  # Apply filtering based on reference dataset
+  if (filterReference == "PCA") {
+    msg("Using PCA-scaled data as reference for filtering...")
+
+    # Filter on PCA data
+    listPreprocessed$data_scaledPCA_rsdFiltered <- apply_rsd_filtering(
+      listPreprocessed$data_scaledPCA, filterMaxRSD, filterMaxRSD_by,
+      listPreprocessed$Metadata, "PCA"
+    )
+
+    listPreprocessed$data_scaledPCA_varFiltered <- apply_variance_filtering(
+      listPreprocessed$data_scaledPCA_rsdFiltered, filterMaxVarSD, "PCA"
+    )
+
+    # Apply same feature selection to PLS data
+    features_to_keep <- colnames(listPreprocessed$data_scaledPCA_varFiltered)
+    listPreprocessed$data_scaledPLS_rsdFiltered <- listPreprocessed$data_scaledPLS[, features_to_keep, drop = FALSE]
+    listPreprocessed$data_scaledPLS_varFiltered <- listPreprocessed$data_scaledPLS_rsdFiltered
+
+    msg(sprintf("Applied PCA-based filtering to both datasets. Features retained: %d",
+                length(features_to_keep)))
+
+  } else if (filterReference == "PLS") {
+    msg("Using PLS-scaled data as reference for filtering...")
+
+    # Filter on PLS data
+    listPreprocessed$data_scaledPLS_rsdFiltered <- apply_rsd_filtering(
+      listPreprocessed$data_scaledPLS, filterMaxRSD, filterMaxRSD_by,
+      listPreprocessed$Metadata, "PLS"
+    )
+
+    listPreprocessed$data_scaledPLS_varFiltered <- apply_variance_filtering(
+      listPreprocessed$data_scaledPLS_rsdFiltered, filterMaxVarSD, "PLS"
+    )
+
+    # Apply same feature selection to PCA data
+    features_to_keep <- colnames(listPreprocessed$data_scaledPLS_varFiltered)
+    listPreprocessed$data_scaledPCA_rsdFiltered <- listPreprocessed$data_scaledPCA[, features_to_keep, drop = FALSE]
+    listPreprocessed$data_scaledPCA_varFiltered <- listPreprocessed$data_scaledPCA_rsdFiltered
+
+    msg(sprintf("Applied PLS-based filtering to both datasets. Features retained: %d",
+                length(features_to_keep)))
+
+  } else if (filterReference == "both") {
+    msg("Applying independent filtering and keeping intersection...")
+
+    # Filter PCA data
+    data_pca_rsd <- apply_rsd_filtering(
+      listPreprocessed$data_scaledPCA, filterMaxRSD, filterMaxRSD_by,
+      listPreprocessed$Metadata, "PCA"
+    )
+    data_pca_var <- apply_variance_filtering(data_pca_rsd, filterMaxVarSD, "PCA")
+
+    # Filter PLS data
+    data_pls_rsd <- apply_rsd_filtering(
+      listPreprocessed$data_scaledPLS, filterMaxRSD, filterMaxRSD_by,
+      listPreprocessed$Metadata, "PLS"
+    )
+    data_pls_var <- apply_variance_filtering(data_pls_rsd, filterMaxVarSD, "PLS")
+
+    # Find intersection of features
+    features_pca <- colnames(data_pca_var)
+    features_pls <- colnames(data_pls_var)
+    features_to_keep <- intersect(features_pca, features_pls)
+
+    if (length(features_to_keep) == 0) {
+      stop("No features passed filtering in both datasets. Consider less stringent filtering parameters.")
+    }
+
+    # Apply intersection to both datasets
+    listPreprocessed$data_scaledPCA_rsdFiltered <- listPreprocessed$data_scaledPCA[, features_to_keep, drop = FALSE]
+    listPreprocessed$data_scaledPCA_varFiltered <- listPreprocessed$data_scaledPCA_rsdFiltered
+    listPreprocessed$data_scaledPLS_rsdFiltered <- listPreprocessed$data_scaledPLS[, features_to_keep, drop = FALSE]
+    listPreprocessed$data_scaledPLS_varFiltered <- listPreprocessed$data_scaledPLS_rsdFiltered
+
+    msg(sprintf("Applied intersection filtering. Features retained: %d (PCA had %d, PLS had %d)",
+                length(features_to_keep), length(features_pca), length(features_pls)))
+  }
+
+  # Update dimensions for filtered data
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After RSD filtering (PCA)",
+               Samples = nrow(listPreprocessed$data_scaledPCA_rsdFiltered),
+               Features = ncol(listPreprocessed$data_scaledPCA_rsdFiltered))
   )
 
-  listPreprocessed$data_scaledPLS_varFiltered <- apply_variance_filtering(
-    listPreprocessed$data_scaledPLS_rsdFiltered, filterMaxVarSD, "PLS"
+  listPreprocessed$Dimensions <- rbind(
+    listPreprocessed$Dimensions,
+    data.frame(Step = "After RSD filtering (PLS)",
+               Samples = nrow(listPreprocessed$data_scaledPLS_rsdFiltered),
+               Features = ncol(listPreprocessed$data_scaledPLS_rsdFiltered))
   )
 
-  # Update dimensions for low variance-filtered data
   listPreprocessed$Dimensions <- rbind(
     listPreprocessed$Dimensions,
     data.frame(Step = "After low variance filtering (PCA)",
@@ -1499,6 +1564,7 @@ perform_PreprocessingPeakData <- function(
     transformation_method = dataTransform,
     scaling_method_PCA = dataScalePCA,
     scaling_method_PLS = dataScalePLS,
+    filtering_reference = filterReference,
     rsd_filtering_applied = !is.null(filterMaxRSD),
     variance_filtering_applied = !is.null(filterMaxVarSD),
     replicates_merged = listPreprocessed$ReplicateMerging$merged

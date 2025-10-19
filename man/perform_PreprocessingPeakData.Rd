@@ -24,6 +24,7 @@ perform_PreprocessingPeakData(
   dataTransform = "vsn",
   dataScalePCA = "meanSD",
   dataScalePLS = "mean2SD",
+  filterReference = "PCA",
   filterMaxRSD = 30,
   filterMaxRSD_by = "EQC",
   filterMaxVarSD = 10,
@@ -99,6 +100,13 @@ Default: "Normalization" (if present, otherwise, "sum")}
 }}
 
 \item{dataScalePLS}{String. Data scaling for PLS analysis only. Same options as \code{dataScalePCA}.}
+
+\item{filterReference}{String. Which scaled dataset to use as reference for RSD and variance filtering. Options:
+\itemize{
+\item \code{"PCA"}: Use auto-scaled (or dataScalePCA) data as reference for filtering (default, more stringent)
+\item \code{"PLS"}: Use pareto-scaled (or dataScalePLS) data as reference for filtering
+\item \code{"both"}: Apply filters independently and keep only features passing in BOTH (intersection, most conservative)
+}}
 
 \item{filterMaxRSD}{Numeric. Threshold for Relative Standard Deviation (RSD) filtering. Set to \code{NULL} to skip this step.}
 
