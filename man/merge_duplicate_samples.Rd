@@ -4,7 +4,13 @@
 \alias{merge_duplicate_samples}
 \title{Merge Duplicate Samples}
 \usage{
-merge_duplicate_samples(raw_data, method, verbose)
+merge_duplicate_samples(
+  processed_data,
+  method,
+  metadata_cols_processed,
+  feature_cols_processed,
+  verbose
+)
 }
 \description{
 Merge Duplicate Samples

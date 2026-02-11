@@ -1,5 +1,3 @@
-'ORIGINAL PCA CODE'
-
 #' Perform Principal Component Analysis (PCA)
 #'
 #' @description
@@ -217,14 +215,14 @@ perform_PCA <- function(
     screeShowCumulative <- FALSE
   }
 
-  # Check if auto_merge_replicates parameter exists (for backward compatibility)
-  if (is.null(data$Parameters$auto_merge_replicates)) {
-    auto_merge_replicates <- FALSE
-    warning("auto_merge_replicates parameter not found in data. Using default value FALSE for backward compatibility.")
+  # Check if merge_replicates  parameter exists (for backward compatibility)
+  if (is.null(data$Parameters$merge_replicates )) {
+    merge_replicates  <- FALSE
+    warning("merge_replicates  parameter not found in data. Using default value FALSE for backward compatibility.")
   } else {
-    auto_merge_replicates <- data$Parameters$auto_merge_replicates
-    if (!is.logical(auto_merge_replicates) || length(auto_merge_replicates) != 1) {
-      stop("data$Parameters$auto_merge_replicates must be a single logical value (TRUE or FALSE).")
+    merge_replicates  <- data$Parameters$merge_replicates
+    if (!is.logical(merge_replicates ) || length(merge_replicates ) != 1) {
+      stop("data$Parameters$merge_replicates  must be a single logical value (TRUE or FALSE).")
     }
   }
 
@@ -238,7 +236,7 @@ perform_PCA <- function(
 
   # Determine which samples to use based on includeQC parameter
   if (includeQC) {
-    sample_indices <- rep(TRUE, nrow(data$data_scaledPCA_varFiltered))
+    sample_indices <- rep(TRUE, nrow(data$data_scaledNONPLS_varFiltered))
     sample_type <- "All samples (QC + Biological)"
   } else {
     sample_indices <- non_qc_indices
@@ -253,11 +251,11 @@ perform_PCA <- function(
   # NEW FUNCTION BELOW THIS
 
   # # Select appropriate filtered data
-  # if (is.null(data$data_scaledPCA_varFiltered) ||
-  #     length(data$data_scaledPCA_varFiltered) == 0) {
+  # if (is.null(data$data_scaledNONPLS_varFiltered) ||
+  #     length(data$data_scaledNONPLS_varFiltered) == 0) {
   #   stop("The preprocessed data does not exist or does not have any data on it.")
   # } else {
-  #   data_pca <- data$data_scaledPCA_varFiltered[sample_indices, , drop = FALSE]
+  #   data_pca <- data$data_scaledNONPLS_varFiltered[sample_indices, , drop = FALSE]
   # }
   #
   # # Check if we have enough samples and variables for PCA
@@ -279,38 +277,38 @@ perform_PCA <- function(
   #   }
   # }
 
-  # Select appropriate filtered data based on auto_merge_replicates parameter
-  if (auto_merge_replicates) {
+  # Select appropriate filtered data based on merge_replicates  parameter
+  if (merge_replicates ) {
     # Use merged data
-    if (is.null(data$data_scaledPCA_merged) || length(data$data_scaledPCA_merged) == 0) {
-      stop("auto_merge_replicates is TRUE but data$data_scaledPCA_merged does not exist or is empty. ",
-           "Ensure the preprocessing function was run with auto_merge_replicates=TRUE.")
+    if (is.null(data$data_scaledNONPLS_merged) || length(data$data_scaledNONPLS_merged) == 0) {
+      stop("merge_replicates  is TRUE but data$data_scaledNONPLS_merged does not exist or is empty. ",
+           "Ensure the preprocessing function was run with merge_replicates =TRUE.")
     }
 
     # Check if merged data has corresponding metadata
     if (is.null(data$Metadata_merged) || nrow(data$Metadata_merged) == 0) {
-      stop("auto_merge_replicates is TRUE but data$Metadata_merged does not exist or is empty.")
+      stop("merge_replicates  is TRUE but data$Metadata_merged does not exist or is empty.")
     }
 
     # Validate dimensions match
-    if (nrow(data$data_scaledPCA_merged) != nrow(data$Metadata_merged)) {
-      stop("Dimension mismatch: data_scaledPCA_merged has ", nrow(data$data_scaledPCA_merged),
+    if (nrow(data$data_scaledNONPLS_merged) != nrow(data$Metadata_merged)) {
+      stop("Dimension mismatch: data_scaledNONPLS_merged has ", nrow(data$data_scaledNONPLS_merged),
            " rows but Metadata_merged has ", nrow(data$Metadata_merged), " rows.")
     }
 
     # Use merged data and metadata
-    full_data <- data$data_scaledPCA_merged
+    full_data <- data$data_scaledNONPLS_merged
     metadata_full <- data$Metadata_merged
     data_source <- "merged"
 
   } else {
     # Use filtered data (original behavior)
-    if (is.null(data$data_scaledPCA_varFiltered) || length(data$data_scaledPCA_varFiltered) == 0) {
+    if (is.null(data$data_scaledNONPLS_varFiltered) || length(data$data_scaledNONPLS_varFiltered) == 0) {
       stop("The preprocessed data does not exist or does not have any data on it.")
     }
 
     # Use original data and metadata
-    full_data <- data$data_scaledPCA_varFiltered
+    full_data <- data$data_scaledNONPLS_varFiltered
     metadata_full <- data$Metadata
     data_source <- "filtered"
   }
@@ -354,7 +352,7 @@ perform_PCA <- function(
 
   # Calculate variance explained and eigenvalues
   eigenvalues <- pca_res$sdev^2
-  variance_explained <- round(100 * (eigenvalues / sum(eigenvalues)), 2)
+  variance_explained <- round(100 * (eigenvalues / sum(eigenvalues)), 1)
 
   # ============================================================================
   # GENERATE SCREE PLOT (if requested)
@@ -396,13 +394,13 @@ perform_PCA <- function(
         ggplot2::scale_x_continuous(breaks = 1:max_show, labels = paste0("PC", 1:max_show))
     } else if (screeType == "line") {
       scree_plot <- scree_plot +
-        ggplot2::geom_line(color = "steelblue", size = 1, group = 1) +
+        ggplot2::geom_line(color = "steelblue", linewidth = 1, group = 1) +
         ggplot2::geom_point(color = "steelblue", size = 3) +
         ggplot2::scale_x_continuous(breaks = 1:max_show, labels = paste0("PC", 1:max_show))
     } else { # "both"
       scree_plot <- scree_plot +
         ggplot2::geom_col(fill = "steelblue", alpha = 0.5, width = 0.6) +
-        ggplot2::geom_line(color = "darkblue", size = 1, group = 1) +
+        ggplot2::geom_line(color = "darkblue", linewidth = 1, group = 1) +
         ggplot2::geom_point(color = "darkblue", size = 3) +
         ggplot2::scale_x_continuous(breaks = 1:max_show, labels = paste0("PC", 1:max_show))
     }
@@ -413,7 +411,7 @@ perform_PCA <- function(
       value_labels <- if (screeWhat == "variance") {
         paste0(round(scree_data$Value, 1), "%")
       } else {
-        round(scree_data$Value, 2)
+        round(scree_data$Value, 1)
       }
 
       # Position labels to the right of bars for bar/both plots, on top for line plots
@@ -683,14 +681,13 @@ perform_PCA <- function(
     scree_included = includeScree
   )
 
-  class(results) <- c("multipleScoresPlots", "list")
-
+  class(results) <- c("perform_PCA", "list")
   return(results)
 }
 
 # Enhanced helper function to print all plots
 #' @export
-print.multipleScoresPlots <- function(x, ...) {
+print.perform_PCA <- function(x, ...) {
   cat("Multiple PCA Scores Plots Object\n")
   cat("================================\n")
   cat("Number of scores plots:", length(x$plots), "\n")
@@ -724,7 +721,7 @@ print.multipleScoresPlots <- function(x, ...) {
 #' @param nrow Number of rows in the plot arrangement (default: NULL, auto-calculated)
 #' @export
 plot_PCAScreeScores <- function(multi_plots_obj, arrange = TRUE, include_scree = TRUE, ncol = 2, nrow = NULL) {
-  if (!inherits(multi_plots_obj, "multipleScoresPlots")) {
+  if (!inherits(multi_plots_obj, "perform_PCA")) {
     stop("Object must be created by perform_PCA() function")
   }
 
@@ -771,7 +768,7 @@ plot_PCAScreeScores <- function(multi_plots_obj, arrange = TRUE, include_scree =
 #' @return Data frame with PC information
 #' @export
 get_ScreeData <- function(multi_plots_obj, what = "variance", max_pc = NULL) {
-  if (!inherits(multi_plots_obj, "multipleScoresPlots")) {
+  if (!inherits(multi_plots_obj, "perform_PCA")) {
     stop("Object must be created by perform_PCA() function")
   }
 
@@ -800,4 +797,40 @@ get_ScreeData <- function(multi_plots_obj, what = "variance", max_pc = NULL) {
   }
 
   return(result)
+}
+
+# S3 Methods
+#' @export
+print.perform_PCA <- function(x, ...) {
+  cat("=== Principal Component Analysis ===\n")
+  cat("Source Data:      ", x$data_source, "\n")
+  cat("Samples:          ", nrow(x$data_used), "\n")
+  cat("Total Variance:   ", sum(x$variance_explained$variance_explained), "%\n")
+  cat("Plots Generated:  ", length(x$plots), "\n")
+  invisible(x)
+}
+
+#' @export
+summary.perform_PCA <- function(object, ...) {
+  # Get variance for first 5 PCs
+  var_summ <- head(object$variance_explained, 5)
+  ans <- list(
+    variance_table = var_summ,
+    plot_info = object$plot_info,
+    cumulative_variance = cumsum(object$variance_explained)[1:5, ]
+  )
+  class(ans) <- "summary.perform_PCA"
+  return(ans)
+}
+
+#' @export
+print.summary.perform_PCA <- function(x, ...) {
+  cat("---------------------------------------\n")
+  cat("PCA Variance Explained (Top 5 PCs)\n")
+  cat("---------------------------------------\n")
+  print(x$var_table)
+
+  cat("\n-- Plot Configurations --\n")
+  print(x$plot_info[,c("plot_number", "title")])
+  invisible(x)
 }

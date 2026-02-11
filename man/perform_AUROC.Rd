@@ -16,141 +16,103 @@ perform_AUROC(
   adjpvalue = 0.05,
   direction = "auto",
   top_n = 5L,
+  minimum_auc = 0.8,
   plot_iden_met = NULL,
   confidence_level = 0.95,
-  min_group_size = 3L
+  min_group_size = 3L,
+  skip_tests = NULL
 )
 }
 \arguments{
-\item{data_PP}{List. Results from the \code{performPreprocessingPeakData} function.
-Must contain \code{$Metadata} with \code{$Group} column and
-\code{$data_scaledPCA_varFiltered} or \code{$data_scaledPCA_merged} matrix.
-The latter is for the case when replicates were merged.}
+\item{data_PP}{List. Results from the \code{performPreprocessingPeakData} function.}
 
-\item{data_DR}{List. Results from the \code{performDimensionReduction} function
-(OPLS-DA). Must contain VIP score data frames with naming pattern
-\code{data_VIPScores_[group1] vs. [group2]}.}
+\item{data_DR}{List. Results from the \code{performDimensionReduction} function.}
 
-\item{data_FC}{List. Results from the \code{performFoldChange} function. Must
-contain fold change data frames with naming pattern
-\code{data_combined_[group1] vs. [group2]}.}
+\item{data_FC}{List. Results from the \code{performFoldChange} function.}
 
-\item{data_CA}{List. Results from the \code{performComparativeAnalysis} function.
-Must contain \code{$results} data frame with adjusted p-values.}
+\item{data_CA}{List. Results from the \code{performComparativeAnalysis} function.}
 
-\item{arrangeLevels}{Character vector or NULL. Specifies the order of groups
-for analysis (e.g., \code{c("Control", "Case1", "Case2")}). When NULL,
-groups are sorted alphabetically. It is recommended to arrange from least
-severe to most severe condition (e.g., "Control", "Mild", "Severe").}
+\item{arrangeLevels}{Character vector or NULL. Specifies the order of groups.
+Should be arranged from control to case.}
 
-\item{VIPmin}{Numeric. Minimum Variable Importance in Projection (VIP) score
-threshold for feature selection. Features with VIP < VIPmin are excluded.
-Default: 1.0.}
+\item{VIPmin}{Numeric. Minimum VIP score threshold. Default: 1.0.}
 
-\item{fcUP}{Numeric. Minimum fold change threshold for up-regulated features.
-Features with fold change >= fcUP are considered up-regulated. Default: 2.0.}
+\item{fcUP}{Numeric. Minimum fold change threshold for up-regulation. Default: 2.0.
+Checks after rounding off to 2 decimal places.}
 
-\item{fcDown}{Numeric. Maximum fold change threshold for down-regulated features.
-Features with fold change <= fcDown are considered down-regulated. Default: 0.5.}
+\item{fcDown}{Numeric. Maximum fold change threshold for down-regulation. Default: 0.5.
+Checks after rounding off to 2 decimal places.}
 
-\item{adjpvalue}{Numeric. Adjusted p-value threshold for statistical significance.
-Features with adjusted p-value >= adjpvalue are excluded. Default: 0.05.}
+\item{adjpvalue}{Numeric. Adjusted p-value threshold. Default: 0.05.}
 
-\item{direction}{Character. Direction parameter for ROC analysis. Options:
-\itemize{
-\item \code{"auto"}: Automatically determines optimal direction
-\item \code{">"}: Use when predictor values for control group > case group
-\item \code{"<"}: Use when predictor values for control group < case group
-}
-See \code{\link[pROC]{roc}} for details. Default: "auto".}
+\item{direction}{Character. Direction parameter for ROC analysis. Default: "auto".}
 
-\item{top_n}{Integer. Number of top features (by AUC) to display in ROC plots.
-Must be positive. Default: 5.}
+\item{top_n}{Integer. Number of top features to display. Default: 5.}
 
-\item{plot_iden_met}{Character vector or NULL. Specific metabolite names to plot
-individually. When provided, generates separate ROC plots for each specified
-metabolite regardless of filtering criteria. Default: NULL.}
+\item{minimum_auc}{Numeric or NULL. Minimum AUC threshold for feature selection.
+When specified, overrides 'top_n' and plots all features with AUC >= minimum_auc.
+Must be between 0 and 1. Default: 0.8.}
 
-\item{confidence_level}{Numeric. Confidence level for AUC confidence intervals.
-Must be between 0 and 1. Default: 0.95.}
+\item{plot_iden_met}{Character vector or NULL. Specific metabolites to plot. Default: NULL.}
 
-\item{min_group_size}{Integer. Minimum number of samples required per group
-for ROC analysis. Default: 3.}
+\item{confidence_level}{Numeric. Confidence level for AUC intervals. Default: 0.95.}
+
+\item{min_group_size}{Integer. Minimum samples required per group. Default: 3.}
+
+\item{skip_tests}{Character vector or NULL. Specifies which tests to skip when filtering features.
+Options: "DR" (dimension reduction/VIP), "FC" (fold change), "CA" (comparative analysis).
+When a test is skipped, its filtering criteria are ignored. For example, skip_tests = c("DR", "FC")
+will only filter by comparative analysis p-value. Use skip_tests = c("DR", "FC", "CA") to
+perform AUROC on all available features without any filtering. Default: NULL (use all tests).}
 }
 \value{
-A list containing the following components:
-\itemize{
-\item \code{FunctionOrigin}: Character indicating the source function
-\item \code{data_Merged_[comparison]}: Merged data frames for each group comparison
-\item \code{data_Filtered_[comparison]}: Filtered data matrices for each comparison
-\item \code{data_results_[comparison]}: AUROC results data frames
-\item \code{plots}: List of combined ROC plots for top features
-\item \code{plots_identifiedMetabolites}: Individual plots for specified metabolites (if requested)
-\item \code{summary}: Overall summary statistics
-}
+A list containing AUROC analysis results
 }
 \description{
 Performs comprehensive Area Under the Receiver Operating Characteristic (AUROC)
 analysis for metabolomics data. This function integrates results from data
 preprocessing, dimension reduction (OPLS-DA), fold change analysis, and
 comparative analysis to identify and visualize discriminative metabolic features
-between different groups. The function automatically filters features based on
-Variable Importance in Projection (VIP) scores, fold change thresholds, and
-statistical significance, then generates ROC curves for the most discriminative features.
-}
-\details{
-The function performs the following steps:
-\enumerate{
-\item Validates input data and parameters
-\item Excludes quality control (QC) samples
-\item Generates all possible pairwise group combinations
-\item For each comparison, merges VIP, fold change, and statistical data
-\item Filters features based on specified thresholds
-\item Computes ROC curves and AUC values with confidence intervals
-\item Generates publication-ready plots
-\item Optionally creates individual plots for specified metabolites
-}
+between different groups.
 }
 \examples{
 \dontrun{
-# Basic usage
-auroc_results <- perform_AUROC(
-  data_PP = preprocessing_results,
-  data_DR = dimension_reduction_results,
-  data_FC = fold_change_results,
-  data_CA = comparative_analysis_results
+# Standard analysis using all tests
+auroc_full <- perform_AUROC(
+  data_PP = preprocessed_data,
+  data_DR = dimension_reduction_data,
+  data_FC = fold_change_data,
+  data_CA = comparative_analysis_data
 )
 
-# Advanced usage with custom parameters
-auroc_results <- perform_AUROC(
-  data_PP = preprocessing_results,
-  data_DR = dimension_reduction_results,
-  data_FC = fold_change_results,
-  data_CA = comparative_analysis_results,
-  arrangeLevels = c("Control", "Mild", "Severe"),
-  VIPmin = 1.5,
-  fcUP = 1.5,
-  fcDown = 0.67,
-  adjpvalue = 0.01,
-  top_n = 10,
-  plot_iden_met = c("Metabolite1", "Metabolite2")
+# Skip dimension reduction when OPLS-DA component is not significant
+auroc_no_dr <- perform_AUROC(
+  data_PP = preprocessed_data,
+  data_DR = dimension_reduction_data,
+  data_FC = fold_change_data,
+  data_CA = comparative_analysis_data,
+  skip_tests = "DR"
+)
+
+# Skip both DR and FC, use only statistical significance
+auroc_stats_only <- perform_AUROC(
+  data_PP = preprocessed_data,
+  data_DR = dimension_reduction_data,
+  data_FC = fold_change_data,
+  data_CA = comparative_analysis_data,
+  skip_tests = c("DR", "FC")
+)
+
+# Perform AUROC on all features without filtering
+auroc_all_features <- perform_AUROC(
+  data_PP = preprocessed_data,
+  data_DR = dimension_reduction_data,
+  data_FC = fold_change_data,
+  data_CA = comparative_analysis_data,
+  skip_tests = c("DR", "FC", "CA")
 )
 }
 
-}
-\references{
-Tom Fawcett (2006) “An introduction to ROC analysis”. Pattern Recognition Letters 27, 861–874. DOI: doi: 10.1016/j.patrec.2005.10.010. (for roc, auc)
-
-Xavier Robin, Natacha Turck, Alexandre Hainard, et al. (2011) “pROC: an open-source package for R and S+ to analyze and compare ROC curves”. BMC Bioinformatics, 7, 77. DOI: doi: 10.1186/1471-2105-12-77. (for roc, auc, ci)
-
-David J. Hand and Robert J. Till (2001). A Simple Generalisation of the Area Under the ROC Curve for Multiple Class Classification Problems. Machine Learning 45(2), p. 171–186. DOI: doi: 10.1023/A:1010920819831. (for auc)
-
-Donna Katzman McClish (1989) “Analyzing a Portion of the ROC Curve”. Medical Decision Making 9(3), 190–195. DOI: doi: 10.1177/0272989X8900900307. (for auc)
-
-Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. (for median)
-}
-\seealso{
-\code{\link[pROC]{roc}}, \code{\link[pROC]{auc}}, \code{\link[pROC]{ci}}
 }
 \author{
 John Lennon L. Calorio

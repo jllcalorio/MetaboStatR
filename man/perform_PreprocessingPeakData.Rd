@@ -16,48 +16,50 @@ perform_PreprocessingPeakData(
   spline_smooth_param_limit = c(-1.5, 1.5),
   log_scale = TRUE,
   min_QC = 5,
-  removeUncorrectedFeatures = TRUE,
+  removeUncorrectedFeatures = FALSE,
   dataNormalize = "Normalization",
   refSample = NULL,
   groupSample = NULL,
   reference_method = "mean",
   dataTransform = "vsn",
-  dataScalePCA = "meanSD",
-  dataScalePLS = "mean2SD",
-  filterReference = "PCA",
+  dataScaleNONPLS = "auto",
+  dataScalePLS = "pareto",
+  qcNormalize = "median",
+  filterReference = "auto",
   filterMaxRSD = 30,
   filterMaxRSD_by = "EQC",
-  filterMaxVarSD = 10,
-  auto_merge_replicates = TRUE,
+  filterLowVariability = 10,
+  merge_replicates = TRUE,
+  num_cores = 1,
   verbose = TRUE
 )
 }
 \arguments{
-\item{raw_data}{List. Quality-checked data from the \code{perform_DataQualityCheck} function.}
+\item{raw_data}{List. Quality-checked data \emph{list} from the \code{perform_DataQualityCheck} function.}
 
-\item{outliers}{Vector. Biological samples and/or QC samples considered as outliers. Example format: \code{c('Sample1', 'Sample2', 'QC1', 'QC2', ...)}. Defaults to \code{NULL}.}
+\item{outliers}{Vector. Biological samples and/or QC samples considered as outliers.}
 
-\item{filterMissing}{Numeric. Minimum percentage of missing values across all groups required to remove a feature. Set to \code{NULL} to skip this step.}
+\item{filterMissing}{Numeric. Minimum percentage of missing values (0-100).}
 
-\item{filterMissing_by_group}{Boolean. Determines whether \code{filterMissing} should assess group-specific missingness before feature removal.}
+\item{filterMissing_by_group}{Boolean. Assess missingness group-wise.}
 
-\item{filterMissing_includeQC}{Boolean. If \code{FALSE} (default), QC samples are excluded when implementing \code{filterMissing}.}
+\item{filterMissing_includeQC}{Boolean. Include QCs in missingness filter.}
 
-\item{denMissing}{Numeric. Denominator value used in the fraction \code{1/denMissing} to replace missing values.}
+\item{denMissing}{Numeric. Denominator for missing value imputation (e.g., 5 -> 1/5th of min).}
 
-\item{driftBatchCorrection}{Boolean. If \code{TRUE} (default), perform Quality Control-Robust Spline Correction (QC-RSC) algorithm for signal drift and batch effect correction.}
+\item{driftBatchCorrection}{Boolean. If \code{TRUE}, perform QC-RSC.}
 
-\item{spline_smooth_param}{Numeric. Spline smoothing parameter ranging from 0 to 1.}
+\item{spline_smooth_param}{Numeric. Spline smoothing parameter (0-1).}
 
-\item{spline_smooth_param_limit}{Vector. A vector of format \code{c(min, max)} for spline parameter limits.}
+\item{spline_smooth_param_limit}{Vector. \code{c(min, max)} for spline limits.}
 
-\item{log_scale}{Boolean. If \code{TRUE} (default), performs signal correction fit on log-scaled data.}
+\item{log_scale}{Boolean. Fit correction on log-scaled data.}
 
-\item{min_QC}{Numeric. Minimum number of QC samples required for signal correction per batch.}
+\item{min_QC}{Numeric. Minimum QCs required per batch for correction.}
 
-\item{removeUncorrectedFeatures}{Boolean. If \code{TRUE} (default), removes features that were not corrected by QCRSC due to insufficient QC samples meeting the min_QC threshold.}
+\item{removeUncorrectedFeatures}{Boolean. If \code{TRUE}, remove features QCRSC couldn't correct. Defaults to \code{FALSE} and we let RSD and low-variance filtering remove uninformative features.}
 
-\item{dataNormalize}{String. Data normalization method. Options:
+\item{dataNormalize}{String. Normalization method.
 \itemize{
 \item \code{"none"}: No normalization
 \item \code{"Normalization"}: Using the values from "Normalization" row
@@ -68,70 +70,357 @@ perform_PreprocessingPeakData(
 \item \code{"groupPQN"}: By group in \code{c("SQC", "EQC", "QC")}, if both (default) then all QCs are considered as QC
 \item \code{"quantile"}: By quantile
 }
-Default: "Normalization" (if present, otherwise, "sum")}
+Default: "Normalization" (if present, otherwise, defaults to "sum"). QC samples are normalized by \code{median} (see https://pmc.ncbi.nlm.nih.gov/articles/PMC6835889/).}
 
 \item{refSample}{String. Reference sample for \code{dataNormalize = "PQN2"}.}
 
-\item{groupSample}{String. Used only if \code{dataNormalize = "groupPQN"}.}
+\item{groupSample}{String. Group for \code{dataNormalize = "groupPQN"}.}
 
-\item{reference_method}{String. Method for computing reference from QC samples in \code{dataNormalize = "quantile"}. Options:
-\itemize{
-\item \code{"mean"}: Default
-\item \code{"median"}
-}}
+\item{reference_method}{String. Method (\code{"mean"}, \code{"median"}) for quantile ref.}
 
-\item{dataTransform}{String. Data transformation method applied after \code{dataNormalize}. Options:
+\item{dataTransform}{String. Data transformation method. Options:
 \itemize{
 \item \code{"none"}: No transformation
 \item \code{"log2"}: log base 2
 \item \code{"log10"}: log base 10
 \item \code{"sqrt"}: Square-root
 \item \code{"cbrt"}: Cube-root
-\item \code{"vsn"}: Variance Stabilizing Normalization
-\item \code{"glog"}: Variance stabilising generalised logarithm (glog) transformation (added August 24, 2025)
+\item \code{"vsn"}: Variance Stabilizing Normalization (vsn)
+\item \code{"glog"}: Variance stabilising generalised logarithm (glog) transformation
 }}
 
-\item{dataScalePCA}{String. Data scaling for PCA analysis. This scaled data will be used in all analysis except PLS-type analysis. Options:
+\item{dataScaleNONPLS}{String. Data scaling for non-PLS type analysis (PCA, t-test/ANOVA, fold change, correlation, etc.). Options:
 \itemize{
 \item \code{"none"}: No data scaling
 \item \code{"mean"}: Scale by mean (average)
-\item \code{"meanSD"}: Auto-scaling. Scale by mean divided by standard deviation (SD)
-\item \code{"mean2SD"}: Pareto-scaling. Scale by mean divided by square-root of SD. Always use this for PLS-type analysis.
+\item \code{"auto"}: Default. Auto-scaling. Scale by mean divided by standard deviation (SD)
+\item \code{"pareto"}: Pareto-scaling. Scale by mean divided by square-root of SD. Suggested for PLS-type analysis (PLS, PLS-DA, OPLS-DA, sPLS-DA)
 }}
 
-\item{dataScalePLS}{String. Data scaling for PLS analysis only. Same options as \code{dataScalePCA}.}
+\item{dataScalePLS}{String. Data scaling for PLS-type analysis. Same options as in \code{dataScaleNONPLS}. Defaults to \code{"pareto"}.}
 
-\item{filterReference}{String. Which scaled dataset to use as reference for RSD and variance filtering. Options:
+\item{qcNormalize}{String. QC normalization method. Options:
 \itemize{
-\item \code{"PCA"}: Use auto-scaled (or dataScalePCA) data as reference for filtering (default, more stringent)
-\item \code{"PLS"}: Use pareto-scaled (or dataScalePLS) data as reference for filtering
-\item \code{"both"}: Apply filters independently and keep only features passing in BOTH (intersection, most conservative)
+\item \code{"none"}: No QC normalization
+\item \code{"mean"}: Scale by mean (average) sample \code{Normalization} values
+\item \code{"median"}: Scale by median sample \code{Normalization} values (default)
 }}
 
-\item{filterMaxRSD}{Numeric. Threshold for Relative Standard Deviation (RSD) filtering. Set to \code{NULL} to skip this step.}
+\item{filterReference}{String. Which scaled data to use for filtering so both \code{NONPLS} and \code{PLS} scaled data have the same features. Options:
+\itemize{
+\item \code{"NONPLS"}: Use auto-scaled (or dataScaleNONPLS) features as reference for filtering
+\item \code{"PLS"}: Use pareto-scaled (or dataScalePLS) features as reference for filtering
+\item \code{"auto"}: Apply filters independently to both datasets and keep only features passing in BOTH (intersection, most robust - default)
+}}
 
-\item{filterMaxRSD_by}{String. Which QC samples to use for RSD filtering. Options:
+\item{filterMaxRSD}{Numeric. Relative Standard Deviation (RSD) threshold (0-100). Default: 30 (remove features with RSD >= .3)}
+
+\item{filterMaxRSD_by}{String. QCs to use for RSD. Options:
 \itemize{
 \item \code{"SQC"}: Filter by sample QC
 \item \code{"EQC"}: Filter by extract QC (default)
-\item \code{"both"}: Filter by by both SQC and EQC (or QC altogether). Use this when there are no SQC and EQC in the "Group" row.
+\item \code{"both"}: Filter by both SQC and EQC (or QC altogether). Use this when there are no SQC and EQC in the "Group" row
 }}
 
-\item{filterMaxVarSD}{Numeric. Remove \verb{nth percentile} of features with lowest variability. Set to \code{NULL} to skip this step.}
+\item{filterLowVariability}{Numeric. Percentile (0-100) for variance filtering. Default: 10 (remove '10th' percentile of features with the lowest variability in the 'Group' row.)}
 
-\item{auto_merge_replicates}{Logical. If \code{TRUE} (default), automatically merge technical replicates based on SubjectID and Replicate columns. Only applies when both columns contain meaningful values.}
+\item{merge_replicates}{Logical. If \code{TRUE}, merge technical replicates by SubjectID.}
 
-\item{verbose}{Logical. Whether to print detailed progress messages. Default \code{TRUE.}}
+\item{num_cores}{Integer. Number of cores for \code{dataTransform = "vsn"}. Can be \code{max} where auto detection of
+the total number of cores \code{max} will be performed, and \code{num_cores <- max - 2}. Defaults to 1.}
+
+\item{verbose}{Logical. Print progress messages.}
 }
 \value{
-A list containing results from all preprocessing steps and a plot of six random features/metabolites before and after drift- and batch correction (if \code{TRUE}).
+A list containing all data generated from all preprocessing steps.
 }
 \description{
-Performs a complete data preprocessing workflow to prepare raw data for
-downstream analysis. This function applies preprocessing steps sequentially
-in the order specified by the parameters to ensure optimal data quality
-and analytical readiness. This function also automatically merges
-technical replicates.
+Performs a complete data preprocessing workflow. This function
+is designed to work seamlessly with the output of \code{perform_DataQualityCheck},
+directly using the pre-processed \code{raw_data}. It applies
+vectorized operations for speed and includes a robust,
+technical replicate merging step.
+}
+\details{
+\subsection{Overview}{
+
+This function performs comprehensive data preprocessing for metabolomics data
+in a fixed, sequential workflow optimized for LC-MS and GC-MS datasets. The
+preprocessing steps are executed in a predefined order regardless of how
+parameters are arranged in the function call. This ensures reproducibility
+and follows established best practices in metabolomics data processing.
+}
+
+\subsection{Preprocessing Workflow (Fixed Order)}{
+
+The function applies the following steps sequentially:
+\enumerate{
+\item \strong{Input Validation & Data Preparation}
+\itemize{
+\item Validates input from \code{perform_DataQualityCheck}
+\item Extracts metadata and feature data
+\item Converts matrix to samples × features format
+}
+\item \strong{Outlier Removal}
+\itemize{
+\item Removes specified biological and/or QC samples
+\item Updates sample count accordingly
+}
+\item \strong{Missing Value Filtering}
+\itemize{
+\item Removes features exceeding \code{filterMissing} threshold
+\item Can be assessed group-wise (\code{filterMissing_by_group = TRUE})
+\item Option to include/exclude QCs in assessment
+}
+\item \strong{Missing Value Imputation}
+\itemize{
+\item Replaces zeros and NAs with 1/\code{denMissing} of column minimum
+\item Applied to prevent downstream numerical issues
+}
+\item \strong{Signal Drift and Batch Correction (QCRSC)}
+\itemize{
+\item \strong{Only applied if \code{driftBatchCorrection = TRUE}}
+\item Uses Quality Control-based Robust Spline Correction
+\item See 'Signal Drift and Batch Correction Details' section below
+}
+\item \strong{Normalization}
+\itemize{
+\item Accounts for dilution and sample-to-sample variation
+\item Multiple methods available (see \code{dataNormalize} parameter)
+\item QC samples normalized separately (see \code{qcNormalize} parameter)
+}
+\item \strong{Transformation}
+\itemize{
+\item Stabilizes variance and reduces heteroscedasticity
+\item Methods include log, sqrt, VSN, glog (see \code{dataTransform} parameter)
+}
+\item \strong{Scaling}
+\itemize{
+\item Two separate scaled datasets generated:
+\itemize{
+\item \strong{NONPLS}: For PCA, t-test, ANOVA, correlation (typically auto-scaling)
+\item \strong{PLS}: For PLS-DA, OPLS-DA, sPLS-DA (typically Pareto-scaling)
+}
+}
+\item \strong{Quality Filtering}
+\itemize{
+\item \strong{RSD Filtering}: Removes features with high QC variability
+\item \strong{Variance Filtering}: Removes low-variance features
+\item Applied based on \code{filterReference} (NONPLS, PLS, or both)
+}
+\item \strong{Technical Replicate Merging}
+\itemize{
+\item \strong{Only if \code{merge_replicates = TRUE}}
+\item Merges replicates by SubjectID (averages feature intensities)
+\item QC samples and samples without SubjectID are never merged
+}
+}
+}
+
+\subsection{Signal Drift and Batch Correction Details}{
+\subsection{What is QCRSC?}{
+
+Quality Control-based Robust Spline Correction (QCRSC) is a widely-used
+method for correcting systematic signal drift and batch effects in
+metabolomics data. It was originally developed by Kirwan et al. (2013)
+and is implemented in the \code{pmp} Bioconductor package.
+}
+
+\subsection{How QCRSC Works}{
+\enumerate{
+\item \strong{QC Samples as Reference}
+\itemize{
+\item QC samples (pooled quality control samples) are injected regularly
+throughout the analytical run
+\item These should theoretically show constant signal since they represent
+the same biological matrix
+\item Any variation in QC signal indicates systematic drift/batch effects
+}
+\item \strong{Feature-wise Correction}
+\itemize{
+\item For each feature (metabolite) independently:
+\itemize{
+\item Extracts QC sample intensities across injection order
+\item Fits a smoothing spline curve through QC points
+\item This spline represents the drift/batch effect pattern
+}
+}
+\item \strong{Spline Fitting Parameters}
+\itemize{
+\item \code{spline_smooth_param}: Controls spline smoothness (0 = more flexible)
+\item \code{spline_smooth_param_limit}: Constrains correction magnitude
+\item \code{log_scale}: Whether to fit spline on log-transformed data
+\item \code{min_QC}: Minimum QCs required per batch for reliable fitting
+}
+\item \strong{Correction Application}
+\itemize{
+\item The fitted drift curve is used to correct \strong{all samples} (biological + QC)
+\item Correction formula: \code{corrected = original / fitted_curve}
+\item Normalizes all samples to remove systematic drift
+}
+\item \strong{Batch Effect Handling}
+\itemize{
+\item If multiple batches exist, QCRSC fits separate splines per batch
+\item Ensures batch-specific drift patterns are corrected independently
+}
+}
+}
+
+\subsection{Uncorrected Features}{
+
+Some features may remain uncorrected if:
+\itemize{
+\item \strong{Insufficient QCs}: Fewer than \code{min_QC} samples in a batch
+\item \strong{Poor spline fit}: Algorithm cannot fit a reliable correction curve
+\item \strong{Numerical issues}: Division by zero or infinite values
+}
+
+For uncorrected features, QCRSC returns the \strong{original values unchanged}.
+
+This function identifies uncorrected features by comparing pre- and
+post-correction data using machine precision tolerance. Features with
+maximum absolute change ≤ \code{.Machine$double.eps^0.5} are flagged as
+uncorrected.
+
+\strong{Handling Uncorrected Features:}
+\itemize{
+\item If \code{removeUncorrectedFeatures = TRUE}: Remove these features entirely
+\item If \code{removeUncorrectedFeatures = FALSE}: Flag but retain for downstream analysis
+}
+
+The default (\code{FALSE}) is recommended as these features may still be biologically
+informative, and subsequent RSD filtering will remove high-variability features
+regardless of correction status.
+}
+
+\subsection{When to Use QCRSC}{
+
+\strong{Use QCRSC when:}
+\itemize{
+\item Long analytical runs with visible signal drift
+\item Multiple batches analyzed at different times
+\item QC samples show systematic trends across injection order
+}
+
+\strong{Skip QCRSC when:}
+\itemize{
+\item Short runs with minimal drift (< 50 samples)
+\item Insufficient QC samples (< 5 per batch)
+\item QC samples already show stable signal
+}
+}
+
+}
+
+\subsection{Normalization Methods}{
+\itemize{
+\item \strong{"none"}: No normalization (not recommended for most datasets)
+\item \strong{"Normalization"}: Uses values from "Normalization" metadata row
+(e.g., specific gravity, osmolality for urine; total protein for plasma)
+\item \strong{"sum"}: Total sum normalization (assumes similar total abundance)
+\item \strong{"median"}: Median normalization (robust to outliers)
+\item \strong{"PQN1"}: Probabilistic Quotient Normalization using global median reference
+\item \strong{"PQN2"}: PQN using specific reference sample (\code{refSample})
+\item \strong{"groupPQN"}: PQN using pooled QC samples as reference
+\item \strong{"quantile"}: Quantile normalization (forces identical distributions)
+}
+
+\strong{QC Normalization:} When using "Normalization" method, QC samples are
+normalized separately using the mean or median of biological sample
+normalization values (controlled by \code{qcNormalize}). This prevents
+inappropriate correction of QC samples with biological sample-specific values.
+}
+
+\subsection{Scaling Methods}{
+\itemize{
+\item \strong{"none"}: No scaling (preserves original magnitude relationships)
+\item \strong{"mean"}: Mean-centering only (centers distribution at zero)
+\item \strong{"auto"}: Auto-scaling = mean-centering + unit variance scaling
+(recommended for PCA, correlation, general multivariate analysis)
+\item \strong{"pareto"}: Pareto-scaling = mean-centering + sqrt(SD) scaling
+(recommended for PLS-DA, OPLS-DA; balances between auto and none)
+}
+}
+
+\subsection{Filter Reference Strategy}{
+
+The \code{filterReference} parameter determines which scaled dataset is used
+as the reference for RSD and variance filtering:
+\itemize{
+\item \strong{"NONPLS"} (default): Apply filters to NONPLS-scaled data, then use
+the resulting feature set for both NONPLS and PLS datasets. More stringent
+as auto-scaling amplifies small variations.
+\item \strong{"PLS"}: Apply filters to PLS-scaled data, then use the resulting
+feature set for both datasets. Less stringent as Pareto-scaling
+preserves more of the original structure.
+\item \strong{"auto"}: Apply filters independently to each scaled dataset and keep
+only features passing in BOTH (intersection). Most conservative approach.
+}
+}
+
+\subsection{Technical Replicate Merging}{
+
+When \code{merge_replicates = TRUE}, the function automatically detects and
+merges technical replicates based on the \code{SubjectID} column:
+\itemize{
+\item \strong{What gets merged:} Only biological samples with matching SubjectID
+\item \strong{What stays separate:} QC samples, blanks, and samples without SubjectID
+\item \strong{Merging method:} Averages feature intensities across replicates
+\item \strong{Metadata handling:} Uses earliest injection order, first batch encountered
+}
+
+Merging is applied \strong{after all filtering} to ensure only high-quality
+features are included in the final averaged values.
+}
+
+\subsection{Parallelization (VSN transformation)}{
+
+The Variance Stabilizing Normalization (VSN) transformation can be
+computationally intensive for large datasets. The \code{num_cores} parameter
+enables parallel processing:
+\itemize{
+\item Set to integer (1 to max available cores) for specific core count
+\item Set to \code{"max"} for automatic detection (uses max cores - 2)
+\item Only affects VSN; other steps run sequentially
+}
+}
+
+\subsection{Output Structure}{
+
+The function returns a comprehensive list containing:
+\itemize{
+\item \strong{Metadata}: Sample information, groups, batches, injection order
+\item \strong{Raw & intermediate data}: Data at each preprocessing step
+\item \strong{Final scaled data}:
+\itemize{
+\item \code{data_scaledNONPLS_varFiltered}: For PCA, t-test, ANOVA, correlation
+\item \code{data_scaledPLS_varFiltered}: For PLS-DA, OPLS-DA, sPLS-DA
+\item \code{data_scaledNONPLS_merged}: Merged replicates (if applicable)
+\item \code{data_scaledPLS_merged}: Merged replicates (if applicable)
+}
+\item \strong{Processing summary}: Dimensions at each step, parameters used
+\item \strong{QC metrics}: Uncorrected features, outliers removed, time elapsed
+}
+}
+
+\subsection{Important Notes}{
+\enumerate{
+\item \strong{Order is fixed}: Preprocessing steps execute in the order documented
+above, regardless of parameter order in the function call
+\item \strong{Use appropriate downstream data}:
+\itemize{
+\item For PCA, heatmaps, clustering: Use \verb{data_scaledNONPLS_*}
+\item For PLS-DA, OPLS-DA: Use \verb{data_scaledPLS_*}
+\item If replicates merged: Use \verb{*_merged} datasets
+}
+\item \strong{QC samples}: Retained throughout for quality assessment but should
+be removed before statistical analysis of biological groups
+\item \strong{Missing values}: After imputation, no NAs should remain. If new NAs
+appear after correction, they are automatically re-imputed.
+\item \strong{Feature count}: Expect substantial feature reduction through filtering
+steps. The \code{Dimensions} data frame tracks feature count at each stage.
+}
+}
 }
 \references{
 Kirwan, J.A., Broadhurst, D.I., Davidson, R.L. et al. Characterising and correcting batch variation in an automated direct infusion mass spectrometry (DIMS) metabolomics workflow. Anal Bioanal Chem 405, 5147–5157 (2013). \url{https://doi.org/10.1007/s00216-013-6856-7} (pmp::QCRSC)
@@ -153,7 +442,7 @@ L-BFGS-B: Fortran Subroutines for Large-Scale Bound Constrained Optimization, C.
 Becker, R. A., Chambers, J. M. and Wilks, A. R. (1988) The New S Language. Wadsworth & Brooks/Cole. \url{https://doi.org/10.1201/9781351074988} (for scale)
 }
 \seealso{
-\code{\link{perform_DataQualityCheck}} for the data quality check and \code{\link{plot_before_after_correction}} to plot before and after drift- and batch correction
+\code{\link{perform_DataQualityCheck}}
 }
 \author{
 John Lennon L. Calorio

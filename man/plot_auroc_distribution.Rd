@@ -15,5 +15,5 @@ plot_auroc_distribution(auroc_results, bins = 20)
 ggplot2 object
 }
 \description{
-Create histogram of AUC values across all comparisons
+Plot AUROC distribution
 }

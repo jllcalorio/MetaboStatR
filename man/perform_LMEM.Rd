@@ -16,7 +16,8 @@ perform_LMEM(
   response_col = "Response",
   adj_p = "BH",
   stars = TRUE,
-  exclude_qc = TRUE
+  exclude_qc = TRUE,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -58,6 +59,8 @@ results based on the adjusted p-value (default: \code{TRUE}).}
 
 \item{exclude_qc}{A logical value. If \code{TRUE}, removes rows where the
 value in \code{group_cat1_col} is "QC" (default: \code{TRUE}).}
+
+\item{verbose}{A logical value. If \code{FALSE} (default), does not output which feature is being analyzed.}
 }
 \value{
 A list containing the results of the analysis. The list includes:

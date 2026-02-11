@@ -4,7 +4,11 @@
 \alias{generate_metadata_summary}
 \title{Generate Metadata Summary}
 \usage{
-generate_metadata_summary(raw_data)
+generate_metadata_summary(
+  processed_data,
+  metadata_cols_processed,
+  feature_cols_processed
+)
 }
 \description{
 Generate Metadata Summary

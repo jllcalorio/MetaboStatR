@@ -23,9 +23,9 @@ plot_CorrelationHeatmap(
 }
 \arguments{
 \item{data}{A list object containing preprocessed data. Must include a component
-named \code{data_scaledPCA_varFiltered} or \code{data_scaledPCA_merged} (typically output from
+named \code{data_scaledNONPLS_varFiltered} or \code{data_scaledNONPLS_merged} (typically output from
 \code{perform_PreprocessingPeakData} function). The function automatically selects
-the appropriate data source based on \code{data$Parameters$auto_merge_replicates}.}
+the appropriate data source based on \code{data$Parameters$merge_replicates}.}
 
 \item{method}{Character string specifying the correlation method. One of:
 \itemize{
@@ -98,6 +98,8 @@ A list containing:
 \item{\code{iqr_values}}{Data frame of IQR values for all features/samples}
 \item{\code{parameters}}{List of all function parameters used}
 \item{\code{summary_stats}}{Summary statistics of the analysis}
+\item{\code{hclust_object}}{Hierarchical clustering object (hierarchical plots only)}
+\item{\code{distance_matrix}}{Distance matrix used for clustering (hierarchical plots only)}
 }
 }
 \description{
@@ -111,12 +113,15 @@ appropriate data source based on replicate merging settings.
 The function performs the following steps:
 \enumerate{
 \item Validates input parameters and data structure
-\item Automatically selects between \code{data_scaledPCA_varFiltered} and \code{data_scaledPCA_merged} based on \code{auto_merge_replicates} parameter
+\item Automatically selects between \code{data_scaledNONPLS_varFiltered} and \code{data_scaledNONPLS_merged} based on \code{merge_replicates} parameter
 \item Calculates interquartile ranges (IQR) to identify most variable features/samples
 \item Selects top N most variable features/samples based on IQR
 \item For correlation plots: computes correlation matrix with p-values and applies significance masking
 \item For hierarchical plots: uses raw filtered data with clustering
 \item Generates publication-ready heatmap with customizable aesthetics
+For hierarchical plots, the dendrogram is created using base R graphics and
+recorded using \code{recordPlot()}. To display the plot again, use
+\code{replayPlot(result$plot)} where \code{result} is the returned object.
 }
 
 For correlation plots, non-significant correlations (p >= significance_threshold)
@@ -147,6 +152,14 @@ result <- plot_CorrelationHeatmap(
   significance_threshold = 0.01,
   color_palette = c("darkblue", "grey90", "darkred")
 )
+
+# To redisplay a hierarchical plot:
+result <- plot_CorrelationHeatmap(
+  data = preprocessed_data,
+  plot_type = "hierarchical"
+)
+# Replay the plot
+replayPlot(result$plot)
 }
 
 }
@@ -188,7 +201,8 @@ Legendre, P. and L. Legendre (2012). Numerical Ecology, 3rd English ed. Amsterda
 Murtagh, Fionn and Legendre, Pierre (2014). Ward's hierarchical agglomerative clustering method: which algorithms implement Ward's criterion? Journal of Classification, 31, 274â€"295. doi:10.1007/s00357-014-9161-z. (for stats::hclust in pheatmap)
 }
 \seealso{
-\code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}}
+\code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}},
+\code{\link[stats]{hclust}}, \code{\link[stats]{dist}}, \code{\link[grDevices]{recordPlot}}
 }
 \author{
 John Lennon L. Calorio

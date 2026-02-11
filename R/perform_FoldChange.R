@@ -9,8 +9,14 @@
 #'
 #' @param data List. A preprocessed data object returned by `perform_PreprocessingPeakData()`
 #'   or similar preprocessing functions. Must contain:
-#'   - `$data_scaledPCA_varFiltered`: Numeric matrix/data.frame of peak data
+#'   - `$data_transformed_varFiltered`: Numeric matrix/data.frame of peak data (this is the mathematically transformed data)
+#'   - `$data_normalized_varFiltered`: Numeric matrix/data.frame of normalized peak data
+#'   - `$data_scaledNONPLS_varFiltered`: Numeric matrix/data.frame of scaled peak data
 #'   - `$Metadata`: Data.frame with at least a 'Group' column
+#' @param data_type Character. Type of data to use for fold change calculation.
+#'   Options are "normalized" to use `data_normalized_varFiltered`,
+#'   "transformed" to use `data_transformed_varFiltered`,
+#'   or "scaled" to use `data_scaledNONPLS_varFiltered`. Default is "transformed".
 #' @param arrangeLevels Character vector. Optional custom ordering for group levels.
 #'   Must contain all unique group names present in the data (excluding QC samples).
 #'   If `NULL` (default), groups are sorted alphabetically.
@@ -25,9 +31,10 @@
 #'
 #' @return A list containing:
 #'   \item{FunctionOrigin}{Character. Function name for traceability}
+#'   \item{parameters}{List. Parameters used in the analysis}
 #'   \item{data_shifted}{Data.frame. Adjusted data with minimum value shifted to 1}
 #'   \item{group_summary}{Data.frame. Summary of groups and sample counts}
-#'   \item{comparison_matrix}{Matrix. All pairwise comparisons performed}
+#'   \item{comparison_matrix}{Data.frame. Summary of all pairwise comparisons with min/max FC and log2FC}
 #'   \item{data_combined_GROUP1 vs. GROUP2}{Data.frame. Fold change results for each comparison}
 #'
 #' @details
@@ -50,6 +57,12 @@
 #' # Basic usage with default parameters
 #' fc_results <- perform_FoldChange(preprocessed_data)
 #'
+#' # Using normalized data
+#' fc_results <- perform_FoldChange(
+#'   data = preprocessed_data,
+#'   data_type = "normalized"
+#' )
+#'
 #' # Custom group ordering and no sorting
 #' fc_results <- perform_FoldChange(
 #'   data = preprocessed_data,
@@ -62,6 +75,12 @@
 #'   data = preprocessed_data,
 #'   qc_patterns = c("QC", "Blank", "POOL")
 #' )
+#'
+#' # Using scaled data
+#' fc_results <- perform_FoldChange(
+#'   data = preprocessed_data,
+#'   data_type = "scaled"
+#' )
 #' }
 #'
 #' @author John Lennon L. Calorio
@@ -71,6 +90,7 @@
 #' @export
 perform_FoldChange <- function(
     data,
+    data_type = "transformed",
     arrangeLevels = NULL,
     sortFC = TRUE,
     qc_patterns = c("SQC", "EQC", "QC"),
@@ -79,7 +99,7 @@ perform_FoldChange <- function(
 ) {
 
   # Input validation
-  .validate_foldchange_inputs(data, arrangeLevels, sortFC, qc_patterns,
+  .validate_foldchange_inputs(data, data_type, arrangeLevels, sortFC, qc_patterns,
                               min_samples_per_group, epsilon)
 
   # Initialize results list
@@ -88,8 +108,18 @@ perform_FoldChange <- function(
     analysis_timestamp = Sys.time()
   )
 
+  # Store parameters (excluding 'data')
+  fc_results$parameters <- list(
+    data_type = data_type,
+    arrangeLevels = arrangeLevels,
+    sortFC = sortFC,
+    qc_patterns = qc_patterns,
+    min_samples_per_group = min_samples_per_group,
+    epsilon = epsilon
+  )
+
   # Extract and validate data components
-  peak_data <- .extract_peak_data(data)
+  peak_data <- .extract_peak_data(data, data_type)
   metadata <- .extract_metadata(data)
 
   # Filter QC samples
@@ -132,12 +162,13 @@ perform_FoldChange <- function(
     groups_analyzed = levels(groups_factor)
   )
 
+  class(fc_results) <- c("perform_FoldChange", "list")
   return(fc_results)
 }
 
 #' Validate inputs for fold change analysis
 #' @noRd
-.validate_foldchange_inputs <- function(data, arrangeLevels, sortFC, qc_patterns,
+.validate_foldchange_inputs <- function(data, data_type, arrangeLevels, sortFC, qc_patterns,
                                         min_samples_per_group, epsilon) {
 
   # Check data structure
@@ -145,7 +176,16 @@ perform_FoldChange <- function(
     stop("'data' must be a list object from preprocessing functions.")
   }
 
-  required_components <- c("data_scaledPCA_varFiltered", "Metadata")
+  # Check data_type
+  if (!is.character(data_type) || length(data_type) != 1) {
+    stop("'data_type' must be a single character value.")
+  }
+
+  if (!data_type %in% c("normalized", "transformed", "scaled")) {
+    stop("'data_type' must be either 'normalized', 'transformed', or 'scaled'.")
+  }
+
+  required_components <- c("data_scaledNONPLS_varFiltered", "Metadata")
   missing_components <- setdiff(required_components, names(data))
   if (length(missing_components) > 0) {
     stop(paste("Missing required components in 'data':",
@@ -179,16 +219,18 @@ perform_FoldChange <- function(
 
 #' Extract peak data from input object
 #' @noRd
-.extract_peak_data <- function(data) {
-  # Changed from "data_scaledPCA_varFiltered" to "data_normalized" or "data_transformed"
-  # Based on
-  # "https://www.metaboanalyst.ca/resources/vignettes/Statistical_Analysis_Module.html#:~:
-  # text=FC%20is%20calculated%20as%20the%20ratio%20between%20two%20group%20means%20using%20the
-  # %20data%20before%20column%2Dwise%20normalization%20was%20applied."
-  peak_data <- data$data_transformed
+.extract_peak_data <- function(data, data_type) {
+  # Select data based on data_type parameter
+  if (data_type == "normalized") {
+    peak_data <- data$data_normalized_varFiltered
+  } else if (data_type == "transformed") {
+    peak_data <- data$data_transformed_varFiltered
+  } else if (data_type == "scaled") {
+    peak_data <- data$data_scaledNONPLS_varFiltered
+  }
 
   if (is.null(peak_data)) {
-    stop("Peak data component is NULL.")
+    stop(paste0("Peak data component '", data_type, "' is NULL."))
   }
 
   if (!is.data.frame(peak_data) && !is.matrix(peak_data)) {
@@ -364,8 +406,9 @@ perform_FoldChange <- function(
   # Initialize results storage
   comparison_results <- vector("list", n_comparisons)
   comparison_names <- character(n_comparisons)
-  comparison_matrix <- matrix(NA, nrow = n_comparisons, ncol = 3,
-                              dimnames = list(NULL, c("Comparison", "Group1", "Group2")))
+  comparison_matrix <- matrix(NA, nrow = n_comparisons, ncol = 5,
+                              dimnames = list(NULL, c("Comparison", "Min_FC", "Max_FC",
+                                                      "Min_log2FC", "Max_log2FC")))
 
   # Perform comparisons
   for (i in seq_along(group_combinations)) {
@@ -374,13 +417,23 @@ perform_FoldChange <- function(
     group2 <- pair[2]
     comparison_label <- paste(group1, "vs.", group2, sep = " ")
 
-    # Store comparison info
-    comparison_matrix[i, ] <- c(comparison_label, group1, group2)
     comparison_names[i] <- paste0("data_combined_", comparison_label)
 
     # Calculate fold changes
     fc_result <- .calculate_fold_change_pair(df_adjusted, groups_factor, group1, group2, sortFC)
     comparison_results[[i]] <- fc_result
+
+    # Store comparison info with min/max FC and log2FC
+    min_fc <- min(fc_result$fold_change[is.finite(fc_result$fold_change)], na.rm = TRUE)
+    max_fc <- max(fc_result$fold_change[is.finite(fc_result$fold_change)], na.rm = TRUE)
+    min_log2fc <- min(fc_result$log2_fc[is.finite(fc_result$log2_fc)], na.rm = TRUE)
+    max_log2fc <- max(fc_result$log2_fc[is.finite(fc_result$log2_fc)], na.rm = TRUE)
+
+    comparison_matrix[i, ] <- c(comparison_label,
+                                sprintf("%.4f", min_fc),
+                                sprintf("%.4f", max_fc),
+                                sprintf("%.4f", min_log2fc),
+                                sprintf("%.4f", max_log2fc))
   }
 
   # Name the results list
@@ -388,7 +441,7 @@ perform_FoldChange <- function(
 
   return(list(
     results = comparison_results,
-    comparison_matrix = as.data.frame(comparison_matrix),
+    comparison_matrix = as.data.frame(comparison_matrix, stringsAsFactors = FALSE),
     n_comparisons = n_comparisons
   ))
 }
@@ -444,4 +497,34 @@ perform_FoldChange <- function(
   }
 
   return(combined_fc)
+}
+
+# S3 Methods
+#' @export
+print.perform_FoldChange <- function(x, ...) {
+  cat("=== Fold Change Analysis ===\n")
+  cat("Pairwise Comparisons:", x$analysis_info$n_comparisons, "\n")
+  cat("Features Analyzed:   ", x$analysis_info$n_features, "\n")
+  cat("Groups:              ", paste(x$analysis_info$groups_analyzed, collapse=", "), "\n")
+  invisible(x)
+}
+
+#' @export
+summary.perform_FoldChange <- function(object, ...) {
+  ans <- list(
+    matrix = object$comparison_matrix,
+    params = object$parameters
+  )
+  class(ans) <- "summary.perform_FoldChange"
+  return(ans)
+}
+
+#' @export
+print.summary.perform_FoldChange <- function(x, ...) {
+  cat("---------------------------------------\n")
+  cat("Fold Change Summary Matrix\n")
+  cat("---------------------------------------\n")
+  print(x$matrix, row.names=FALSE)
+  cat("\nQC Patterns Used:", paste(x$params$qc_patterns, collapse=", "), "\n")
+  invisible(x)
 }

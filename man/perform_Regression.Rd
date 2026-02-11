@@ -2,11 +2,10 @@
 % Please edit documentation in R/perform_Regression.R
 \name{perform_Regression}
 \alias{perform_Regression}
-\title{Perform LASSO and Elastic Net Regression with Cross-Validation for Categorical and Numeric Responses}
+\title{Perform Regularized Regression with Cross-Validation for Categorical and Numeric Responses}
 \usage{
 perform_Regression(
   data,
-  method = "enet",
   specify_response = NULL,
   train_percent = 80,
   ref = NULL,
@@ -17,7 +16,9 @@ perform_Regression(
   cv_folds = 10,
   parallel = FALSE,
   standardize = TRUE,
-  maxit = 1e+05
+  maxit = 1e+05,
+  type_measure = NULL,
+  custom_contrasts = NULL
 )
 }
 \arguments{
@@ -26,18 +27,10 @@ perform_Regression(
 \itemize{
 \item{\code{FunctionOrigin}}: Character string indicating data source
 \item{\code{Metadata}}: Data frame with sample metadata including Group column
-\item{\code{data_scaledPCA_varFiltered}}: Matrix of preprocessed features
-\item{\code{data_scaledPCA_merged}}: Matrix of merged replicate features (optional)
+\item{\code{data_scaledNONPLS_varFiltered}}: Matrix of preprocessed features
+\item{\code{data_scaledNONPLS_merged}}: Matrix of merged replicate features (optional)
 \item{\code{Parameters}}: List containing preprocessing parameters (optional)
 }}
-
-\item{method}{Character vector specifying regression method(s) to perform. Options:
-\itemize{
-\item{\code{"lasso"}}: LASSO regression only (L1 penalty, alpha = 1)
-\item{\code{"enet"}}: Elastic Net regression only (L1+L2 penalty)
-\item{\code{c("lasso", "enet")}}: Both methods (recommended for comparison)
-}
-Default: \code{"enet"}}
 
 \item{specify_response}{Character string specifying the response variable column name.
 Can be categorical (classification) or numeric (regression). Supported values:
@@ -66,10 +59,14 @@ Default: \code{"1se"}}
 
 \item{alpha}{Numeric value or vector specifying the elastic net mixing parameter(s):
 \itemize{
-\item{\code{Single value}}: Between 0 (ridge) and 1 (lasso). Default: \code{0.5}
-\item{\code{Vector}}: Multiple values for comprehensive tuning, e.g., \code{c(0, 0.25, 0.5, 0.75, 1)}
+\item{\code{0}}: Ridge regression (L2 penalty only)
+\item{\code{1}}: LASSO regression (L1 penalty only)
+\item{\code{0 < alpha < 1}}: Elastic Net (combination of L1 and L2)
+\item{\code{Single value}}: Tests one specific alpha value. Default: \code{0.5}
+\item{\code{Vector}}: Tests multiple alpha values, e.g., \code{c(0, 0.25, 0.5, 0.75, 1)}
 }
-When multiple values provided, all will be evaluated and results stored separately.}
+When multiple values are provided, all will be evaluated and the best-performing
+model will be selected automatically based on cross-validation performance.}
 
 \item{remember}{Numeric value for reproducible results. Sets random seed using
 \code{set.seed(remember)}. If \code{NULL}, no seed is set. Default: \code{123}}
@@ -81,91 +78,225 @@ to console. Default: \code{TRUE}}
 selection. Must be between 3 and 20. Default: \code{10}}
 
 \item{parallel}{Logical indicating whether to use parallel processing for
-cross-validation. Default: \code{FALSE}}
+cross-validation. Requires a parallel backend to be registered (e.g., via
+\code{doParallel::registerDoParallel()}). Default: \code{FALSE}}
 
 \item{standardize}{Logical indicating whether to standardize features before modeling.
 Default: \code{TRUE}}
 
 \item{maxit}{Integer specifying maximum iterations for model convergence.
 Default: \code{100000}}
+
+\item{type_measure}{Character string specifying the loss function to use for
+cross-validation. The default value depends on the response type:
+\itemize{
+\item \code{NULL}: Automatically selects based on response type (default)
+\item \strong{For categorical responses:}
+\itemize{
+\item \code{"class"}: Misclassification error (default for categorical)
+\item \code{"auc"}: Area under ROC curve (binomial only)
+\item \code{"deviance"}: Multinomial deviance
+}
+\item \strong{For numeric responses:}
+\itemize{
+\item \code{"mse"}: Mean squared error (default for numeric)
+\item \code{"mae"}: Mean absolute error
+\item \code{"deviance"}: Gaussian deviance
+}
+}
+Note: "auc" is only valid for binary classification. For multinomial
+classification with >2 classes, "auc" will automatically fall back to "class".
+Default: \code{NULL}}
+
+\item{custom_contrasts}{Named list of custom group comparisons for multinomial
+models. Each element should be a list with 'group1' and 'group2' specifying
+the groups to compare. For example:
+\code{list(severe_vs_mild = list(group1 = "Severe", group2 = "Mild"))}.
+Only applies to multinomial classification. Default: \code{NULL}}
 }
 \value{
 A list containing regression results with the following structure:
 \describe{
 \item{\code{FunctionOrigin}}{Character string identifying the source function}
-\item{\code{ModelSummary}}{Data frame summarizing model performance metrics}
+\item{\code{ModelSummary}}{Data frame summarizing model performance metrics for all tested alpha values}
 \item{\code{DataSplit}}{List containing training/testing data split information}
 \item{\code{DataSource}}{Character string indicating which data matrix was used}
 \item{\code{ResponseType}}{Character string indicating "categorical" or "numeric"}
-\item{\code{LASSO_Results}}{List of LASSO results (if method includes "lasso")}
-\item{\code{ElasticNet_Results}}{List of Elastic Net results (if method includes "enet")}
-\item{\code{AlphaComparison}}{Data frame comparing multiple alpha values (if vector provided)}
-\item{\code{ComparisonSummary}}{Data frame comparing methods (if both performed)}
+\item{\code{SampleDistribution}}{Data frame showing the distribution of samples across
+training and testing sets. For categorical responses, shows counts for each group.
+Includes a "Total" row summing all samples.}
+\item{\code{BestModel}}{List containing results for the best-performing alpha value:
+\itemize{
+\item{\code{Model}}: The fitted cv.glmnet object
+\item{\code{Performance}}: Data frame with performance metrics
+\item{\code{Coefficients}}: Data frame of non-zero coefficients (including Intercepts) with Feature names,
+Coefficient values, and Odds Ratios. For multinomial models, includes a
+Comparison column indicating which groups are being compared (e.g., "Group1 vs Reference")
+\item{\code{N_Coefficients}}: Integer count of total non-zero coefficients (including Intercepts)
+\item{\code{ConfusionMatrix}}: Confusion matrix (categorical only)
+\item{\code{Predictions}}: Data frame with actual vs predicted values
+\item{\code{Lambda}}: Selected lambda value
+\item{\code{Alpha}}: Alpha value used
+}
+}
+\item{\code{AllAlphaResults}}{Named list containing results for all tested alpha values.
+Each element is named "alpha_X" where X is the alpha value (e.g., "alpha_0.5", "alpha_1").
+Structure is identical to BestModel.}
+\item{\code{AlphaComparison}}{Data frame comparing all tested alpha values, including
+performance metrics and the number of non-zero coefficients for each alpha}
 \item{\code{ErrorLog}}{List of any warnings or errors encountered}
 }
 }
 \description{
-This function performs regularized regression analysis using LASSO (Least Absolute
-Shrinkage and Selection Operator) and/or Elastic Net regression methods with enhanced
-capabilities. Both methods are regularization techniques that prevent overfitting by
-adding penalty terms to the loss function. LASSO uses L1 regularization for feature
-selection, while Elastic Net combines L1 and L2 penalties. The function supports:
+This function performs regularized regression analysis using Elastic Net regression,
+which includes LASSO (alpha = 1) and Ridge (alpha = 0) as special cases.
+Regularization techniques prevent overfitting by adding penalty terms to the
+loss function. The function supports:
 \itemize{
 \item{Binary and multinomial classification (categorical responses)}
 \item{Continuous regression (numeric responses)}
-\item{Multiple alpha values for comprehensive Elastic Net tuning}
+\item{Multiple alpha values for comprehensive parameter tuning}
 \item{Automatic data source selection based on preprocessing parameters}
 \item{Robust error handling with detailed diagnostics}
 }
+
+The function properly handles multinomial models by normalizing coefficients
+to the reference group, making all comparisons interpretable as odds ratios
+relative to the baseline. Note: P-values are not provided as they are
+statistically invalid after variable selection in regularized regression.
 }
 \details{
-Perform Regularized Regression Analysis with Enhanced Features
+Perform Regularized Regression Analysis
+}
+\note{
+\strong{Alpha Parameter Guide:}
+\itemize{
+\item{\strong{alpha = 0}: Ridge regression - keeps all features but shrinks coefficients}
+\item{\strong{alpha = 1}: LASSO regression - performs feature selection by setting some coefficients to zero}
+\item{\strong{0 < alpha < 1}: Elastic Net - balances feature selection and coefficient shrinkage}
+}
+
+\strong{Why no p-values?} P-values and standard confidence intervals are not
+provided because they are statistically invalid after variable selection in
+regularized regression. The selection process induces bias that standard
+inference methods cannot account for. Valid alternatives include:
+\itemize{
+\item{Cross-validated prediction performance (provided in Performance metrics)}
+\item{Coefficient magnitudes and directions (provided in Coefficients)}
+\item{Replication in independent datasets}
+\item{Specialized post-selection inference methods (e.g., selective inference)}
+}
+For scientific reporting, focus on cross-validated performance metrics
+(Accuracy, RMSE, etc.) rather than individual coefficient p-values.
 }
 \examples{
 \dontrun{
-# Example 1: Categorical response with multiple alpha values
-regression_results <- perform_Regression(
+# Example 1: Single alpha value (Elastic Net with alpha = 0.5)
+results <- perform_Regression(
   data = preprocessed_data,
-  method = c("lasso", "enet"),
   specify_response = "Group",
-  alpha = c(0.1, 0.5, 0.9),
+  alpha = 0.5,
+  train_percent = 80,
+  lambda = "1se",
+  remember = 123
+)
+
+# Example 2: LASSO regression (alpha = 1)
+lasso_results <- perform_Regression(
+  data = preprocessed_data,
+  specify_response = "Group",
+  alpha = 1,
+  lambda = "1se"
+)
+
+# Example 3: Ridge regression (alpha = 0)
+ridge_results <- perform_Regression(
+  data = preprocessed_data,
+  specify_response = "Group",
+  alpha = 0,
+  lambda = "1se"
+)
+
+# Example 4: Multiple alpha values for comprehensive tuning
+multi_alpha_results <- perform_Regression(
+  data = preprocessed_data,
+  specify_response = "Group",
+  alpha = c(0, 0.25, 0.5, 0.75, 1),  # Tests Ridge to LASSO
   train_percent = 75,
   lambda = "1se",
   remember = 123
 )
 
-# Example 2: Numeric response
-regression_results <- perform_Regression(
+# Example 5: Numeric response variable
+numeric_results <- perform_Regression(
   data = preprocessed_data,
-  method = "enet",
   specify_response = "Response",
   alpha = 0.5,
   train_percent = 80
 )
 
+# Example 6: Custom contrasts for multinomial classification
+contrast_results <- perform_Regression(
+  data = preprocessed_data,
+  specify_response = "Group",
+  alpha = 0.5,
+  custom_contrasts = list(
+    severe_vs_mild = list(group1 = "Severe", group2 = "Mild"),
+    moderate_vs_mild = list(group1 = "Moderate", group2 = "Mild")
+  )
+)
+
 # View results
-print(regression_results$ModelSummary)
-print(regression_results$AlphaComparison)
+print(results$ModelSummary)           # Performance summary
+print(results$AlphaComparison)        # Compare all alpha values
+print(results$BestModel$Coefficients) # Best model coefficients
+
+# Extract specific alpha results
+alpha_05 <- extract_RegressionResults(results, alpha = 0.5)
+lasso <- extract_RegressionResults(results, alpha = 1)
 }
+
+# Example 7: Binary classification optimizing AUC instead of accuracy
+auc_results <- perform_Regression(
+  data = preprocessed_data,
+  specify_response = "Group",  # Must have exactly 2 levels
+  alpha = 0.5,
+  type_measure = "auc"
+)
+
+# Example 8: Numeric response using MAE instead of MSE
+mae_results <- perform_Regression(
+  data = preprocessed_data,
+  specify_response = "Response",  # Numeric variable
+  alpha = 0.5,
+  type_measure = "mae"
+)
+
+# View results
+print(results$ModelSummary) # Performance summary
 
 }
 \references{
-Friedman, J., Hastie, T. and Tibshirani, R. (2008) Regularization Paths for Generalized Linear Models via Coordinate Descent (2010), Journal of Statistical Software, Vol. 33(1), 1-22, doi:10.18637/jss.v033.i01. (for glmnet)
+Friedman, J., Hastie, T. and Tibshirani, R. (2010) Regularization Paths for
+Generalized Linear Models via Coordinate Descent, Journal of Statistical
+Software, Vol. 33(1), 1-22, doi:10.18637/jss.v033.i01.
 
-Simon, N., Friedman, J., Hastie, T. and Tibshirani, R. (2011) Regularization Paths for Cox's Proportional Hazards Model via Coordinate Descent, Journal of Statistical Software, Vol. 39(5), 1-13, doi:10.18637/jss.v039.i05. (for glmnet)
+Zou, H. and Hastie, T. (2005) Regularization and variable selection via the
+elastic net, Journal of the Royal Statistical Society: Series B, 67(2), 301-320.
 
-Kuhn, M. (2008), “Building predictive models in R using the caret package, ” Journal of Statistical Software, (doi:10.18637/jss.v028.i05). (for confusionMatrix )
+Tibshirani, R. (1996) Regression shrinkage and selection via the lasso,
+Journal of the Royal Statistical Society: Series B, 58(1), 267-288.
 
-Altman, D.G., Bland, J.M. (1994) “Diagnostic tests 1: sensitivity and specificity,” British Medical Journal, vol 308, 1552. (for confusionMatrix )
+Kuhn, M. (2008) Building predictive models in R using the caret package,
+Journal of Statistical Software, doi:10.18637/jss.v028.i05.
 
-Altman, D.G., Bland, J.M. (1994) “Diagnostic tests 2: predictive values,” British Medical Journal, vol 309, 102. (for confusionMatrix )
-
-Velez, D.R., et. al. (2008) “A balanced accuracy function for epistasis modeling in imbalanced datasets using multifactor dimensionality reduction.,” Genetic Epidemiology, vol 4, 306. (for confusionMatrix )
-
-Chambers, J. M. and Hastie, T. J. (1992) Statistical Models in S. Wadsworth & Brooks/Cole. (for predict)
+Simon, N., Friedman, J., Hastie, T. and Tibshirani, R. (2011) Regularization
+Paths for Cox's Proportional Hazards Model via Coordinate Descent,
+Journal of Statistical Software, Vol. 39(5), 1-13, doi:10.18637/jss.v039.i05.
 }
 \seealso{
-\code{\link[glmnet]{cv.glmnet}}, \code{\link[caret]{confusionMatrix}}
+\code{\link[glmnet]{cv.glmnet}}, \code{\link[caret]{confusionMatrix}},
+\code{\link{extract_RegressionResults}}
 }
 \author{
 John Lennon L. Calorio

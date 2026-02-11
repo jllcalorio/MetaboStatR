@@ -4,7 +4,7 @@
 \alias{validate_qc_rules}
 \title{Validate QC Rules}
 \usage{
-validate_qc_rules(raw_data)
+validate_qc_rules(processed_data)
 }
 \description{
 Validate QC Rules

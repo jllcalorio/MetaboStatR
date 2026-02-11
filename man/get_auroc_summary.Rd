@@ -13,5 +13,5 @@ get_auroc_summary(auroc_results)
 Data frame with summary statistics
 }
 \description{
-Extract summary statistics from AUROC results
+Get AUROC summary statistics
 }

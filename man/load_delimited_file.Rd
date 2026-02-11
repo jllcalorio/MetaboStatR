@@ -4,7 +4,7 @@
 \alias{load_delimited_file}
 \title{Load Delimited File}
 \usage{
-load_delimited_file(file_location, separator, skip_rows)
+load_delimited_file(file_location, separator, skip_rows, verbose)
 }
 \description{
 Load Delimited File

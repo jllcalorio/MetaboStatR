@@ -103,63 +103,8 @@ plot_Volcano <- function(PPData,
                          show_plots = TRUE,
                          verbose = TRUE) {
 
-  # Validate inputs
-  .validate_volcano_inputs(PPData, FCData, CAData, arrangeLevels, fcUP, fcDown, adjpvalue)
+  # ========== INPUT VALIDATION ==========
 
-  if (verbose) message("Initializing volcano plot analysis...")
-
-  # Initialize results structure
-  volcano_results <- .initialize_volcano_results(FCData, CAData, fcUP, fcDown, adjpvalue)
-
-  # Extract and process groups
-  groups_info <- .extract_groups(PPData, arrangeLevels, verbose)
-
-  # Generate all pairwise comparisons
-  group_combinations <- utils::combn(groups_info$unique_groups, 2, simplify = FALSE)
-
-  if (verbose) {
-    message(sprintf("Processing %d group comparison(s):", length(group_combinations)))
-    for (i in seq_along(group_combinations)) {
-      message(sprintf("  %d. %s vs. %s", i, group_combinations[[i]][1], group_combinations[[i]][2]))
-    }
-  }
-
-  # Process each comparison
-  volcano_results$VolcanoPlots <- list()
-  volcano_results$Summary <- list()
-
-  for (i in seq_along(group_combinations)) {
-    group_pair <- group_combinations[[i]]
-
-    if (verbose) message(sprintf("Processing comparison %d/%d: %s vs. %s",
-                                 i, length(group_combinations), group_pair[1], group_pair[2]))
-
-    # Process single comparison
-    comparison_result <- .process_single_comparison(
-      group_pair, FCData, CAData, fcUP, fcDown, adjpvalue, show_plots, verbose
-    )
-
-    if (!is.null(comparison_result)) {
-      group_name <- comparison_result$group_name
-
-      # Store results
-      volcano_results$VolcanoPlots[[group_name]] <- comparison_result$plot
-      volcano_results[[paste0("VolcanoData_", gsub(" ", "_", group_name))]] <- comparison_result$data
-      volcano_results[[paste0("VolcanoData_filtered_", gsub(" ", "_", group_name))]] <- comparison_result$filtered_data
-      volcano_results$Summary[[group_name]] <- comparison_result$summary
-    }
-  }
-
-  if (verbose) {
-    message("Volcano plot analysis completed successfully!")
-    message(sprintf("Generated %d plot(s) and datasets", length(volcano_results$VolcanoPlots)))
-  }
-
-  return(volcano_results)
-}
-
-# Helper function: Validate inputs
-.validate_volcano_inputs <- function(PPData, FCData, CAData, arrangeLevels, fcUP, fcDown, adjpvalue) {
   # Check required data structures
   if (!is.list(PPData) || is.null(PPData$Metadata) || is.null(PPData$Metadata$Group)) {
     stop("PPData must be a list with Metadata$Group component", call. = FALSE)
@@ -186,20 +131,19 @@ plot_Volcano <- function(PPData,
     stop("adjpvalue must be a numeric value between 0 and 1", call. = FALSE)
   }
 
-  # Check logical relationship between thresholds
   if (fcDown >= fcUP) {
     stop("fcDown must be less than fcUP", call. = FALSE)
   }
 
-  # Validate arrangeLevels if provided
   if (!is.null(arrangeLevels) && !is.character(arrangeLevels)) {
     stop("arrangeLevels must be a character vector or NULL", call. = FALSE)
   }
-}
 
-# Helper function: Initialize results structure
-.initialize_volcano_results <- function(FCData, CAData, fcUP, fcDown, adjpvalue) {
-  list(
+  if (verbose) message("Initializing volcano plot analysis...")
+
+  # ========== INITIALIZE RESULTS STRUCTURE ==========
+
+  volcano_results <- list(
     FunctionOrigin = "plot_Volcano",
     Parameters = list(
       FoldChange_Upper = fcUP,
@@ -211,12 +155,13 @@ plot_Volcano <- function(PPData,
     InputData = list(
       FoldChangeData = FCData,
       ComparativeAnalysisData = CAData
-    )
+    ),
+    VolcanoPlots = list(),
+    Summary = list()
   )
-}
 
-# Helper function: Extract and validate groups
-.extract_groups <- function(PPData, arrangeLevels, verbose) {
+  # ========== EXTRACT AND VALIDATE GROUPS ==========
+
   # Identify QC samples
   qc_patterns <- c("SQC", "EQC", "QC", "POOLED", "BLANK")
   qc_indices <- grepl(paste(qc_patterns, collapse = "|"), PPData$Metadata$Group, ignore.case = TRUE)
@@ -258,213 +203,374 @@ plot_Volcano <- function(PPData,
     stop("At least 2 groups are required for comparison", call. = FALSE)
   }
 
-  list(groups = groups, unique_groups = unique_groups)
-}
+  # ========== GENERATE PAIRWISE COMPARISONS ==========
 
-# Helper function: Process single comparison
-.process_single_comparison <- function(group_pair, FCData, CAData, fcUP, fcDown, adjpvalue, show_plots, verbose) {
-  group1 <- group_pair[1]
-  group2 <- group_pair[2]
+  group_combinations <- utils::combn(unique_groups, 2, simplify = FALSE)
 
-  # Try both possible group name formats
-  possible_names <- c(
-    paste(group1, "vs.", group2, sep = " "),
-    paste(group2, "vs.", group1, sep = " ")
-  )
-
-  # Find matching fold change data
-  fc_data <- NULL
-  group_name <- NULL
-
-  for (name in possible_names) {
-    fc_key <- paste0("data_combined_", name)
-    if (fc_key %in% names(FCData) && !is.null(FCData[[fc_key]])) {
-      fc_data <- FCData[[fc_key]]
-      group_name <- name
-      break
+  if (verbose) {
+    message(sprintf("Processing %d group comparison(s):", length(group_combinations)))
+    for (i in seq_along(group_combinations)) {
+      message(sprintf("  %d. %s vs. %s", i, group_combinations[[i]][1], group_combinations[[i]][2]))
     }
   }
 
-  # Remove 'Feature' column
-  fc_data$Feature <- NULL
+  # ========== PROCESS EACH COMPARISON ==========
 
-  if (is.null(fc_data)) {
-    if (verbose) warning(sprintf("No fold change data found for %s vs. %s", group1, group2))
-    return(NULL)
-  }
+  for (i in seq_along(group_combinations)) {
+    group_pair <- group_combinations[[i]]
+    group1 <- group_pair[1]
+    group2 <- group_pair[2]
 
-  # Process fold change data
-  fc_processed <- fc_data %>%
-    tibble::rownames_to_column("Feature") %>%
-    dplyr::arrange(.data$Feature)
+    if (verbose) message(sprintf("Processing comparison %d/%d: %s vs. %s",
+                                 i, length(group_combinations), group1, group2))
 
-  # Process comparative analysis data
-  ca_processed <- CAData$results %>%
-    tibble::rownames_to_column("Feature") %>%
-    dplyr::arrange(.data$Feature)
-
-  # Merge datasets with error handling
-  tryCatch({
-    volcano_data <- .merge_and_classify_data(fc_processed, ca_processed, fcUP, fcDown, adjpvalue)
-  }, error = function(e) {
-    if (verbose) warning(sprintf("Error merging data for %s: %s", group_name, e$message))
-    return(NULL)
-  })
-
-  if (nrow(volcano_data) == 0) {
-    if (verbose) message(sprintf("No features found for %s", group_name))
-    return(NULL)
-  }
-
-  # Create filtered dataset
-  filtered_data <- volcano_data %>%
-    dplyr::filter(.data$Significance != "Not Significant")
-
-  # Generate summary statistics
-  summary_stats <- .generate_summary_stats(volcano_data, group_name)
-
-  # Create plot
-  plot_obj <- .create_volcano_plot(volcano_data, group_name, fcUP, fcDown, adjpvalue)
-
-  if (show_plots) {
-    print(plot_obj)
-  }
-
-  list(
-    group_name = group_name,
-    data = volcano_data,
-    filtered_data = filtered_data,
-    plot = plot_obj,
-    summary = summary_stats
-  )
-}
-
-# Helper function: Merge and classify data
-.merge_and_classify_data <- function(fc_data, ca_data, fcUP, fcDown, adjpvalue) {
-  # Standardize column names for merging
-  required_fc_cols <- c("Feature", "fold_change", "log2_fc")
-  required_ca_cols <- c("Feature", "p_value", "adj_p_value")
-
-  if (!all(required_fc_cols %in% colnames(fc_data))) {
-    missing_cols <- setdiff(required_fc_cols, colnames(fc_data))
-    stop(sprintf("Missing required columns in fold change data: %s",
-                 paste(missing_cols, collapse = ", ")))
-  }
-
-  if (!all(required_ca_cols %in% colnames(ca_data))) {
-    missing_cols <- setdiff(required_ca_cols, colnames(ca_data))
-    stop(sprintf("Missing required columns in comparative analysis data: %s",
-                 paste(missing_cols, collapse = ", ")))
-  }
-
-  # Merge and classify
-  merged_data <- dplyr::full_join(fc_data, ca_data, by = "Feature") %>%
-    dplyr::rename(
-      Fold_Change = .data$fold_change,
-      Log2_Fold_Change = .data$log2_fc,
-      P_Value = .data$p_value,
-      Adjusted_P_Value = .data$adj_p_value
-    ) %>%
-    dplyr::mutate(
-      # Handle potential NA values
-      Fold_Change = ifelse(is.na(.data$Fold_Change), 1, .data$Fold_Change),
-      Adjusted_P_Value = ifelse(is.na(.data$Adjusted_P_Value), 1, .data$Adjusted_P_Value),
-
-      # Classify significance
-      Significance = dplyr::case_when(
-        .data$Fold_Change >= fcUP & .data$Adjusted_P_Value < adjpvalue ~ "Upregulated",
-        .data$Fold_Change <= fcDown & .data$Adjusted_P_Value < adjpvalue ~ "Downregulated",
-        TRUE ~ "Not Significant"
-      ),
-
-      # Create log10 p-value for plotting
-      Neg_Log10_Adj_P = -log10(pmax(.data$Adjusted_P_Value, .Machine$double.eps))
-    ) %>%
-    dplyr::arrange(dplyr::desc(.data$Fold_Change))
-
-  return(merged_data)
-}
-
-# Helper function: Generate summary statistics
-.generate_summary_stats <- function(data, group_name) {
-  summary_table <- data %>%
-    dplyr::count(.data$Significance, name = "Count") %>%
-    dplyr::mutate(Percentage = round(.data$Count / sum(.data$Count) * 100, 2))
-
-  list(
-    Comparison = group_name,
-    Total_Features = nrow(data),
-    Significant_Features = sum(data$Significance != "Not Significant"),
-    Upregulated_Count = sum(data$Significance == "Upregulated"),
-    Downregulated_Count = sum(data$Significance == "Downregulated"),
-    Not_Significant_Count = sum(data$Significance == "Not Significant"),
-    Summary_Table = summary_table,
-    Max_Log2_FC = max(abs(data$Log2_Fold_Change), na.rm = TRUE),
-    Min_Adj_P_Value = min(data$Adjusted_P_Value, na.rm = TRUE)
-  )
-}
-
-# Helper function: Create volcano plot
-.create_volcano_plot <- function(data, group_name, fcUP, fcDown, adjpvalue) {
-  # Count significant features for subtitle
-  n_up <- sum(data$Significance == "Upregulated")
-  n_down <- sum(data$Significance == "Downregulated")
-  n_total <- nrow(data)
-  fc_max <- max(data$Fold_Change) # max(data[sapply(data$Fold_Change, is.numeric)], na.rm = TRUE)
-  fc_min <- min(data$Fold_Change) # min(data[sapply(data$Fold_Change, is.numeric)], na.rm = TRUE)
-
-  # Create the plot
-  p <- ggplot2::ggplot(data, ggplot2::aes(x = .data$Log2_Fold_Change, y = .data$Neg_Log10_Adj_P)) +
-    ggplot2::geom_point(
-      ggplot2::aes(color = .data$Significance),
-      alpha = 0.6,
-      size = 1.2
-    ) +
-    ggplot2::scale_color_manual(
-      values = c(
-        "Not Significant" = "#808080",
-        "Upregulated" = "#E31A1C",
-        "Downregulated" = "#1F78B4"
-      ),
-      name = "Regulation"
-    ) +
-    ggplot2::theme_minimal() +
-    ggplot2::theme(
-      plot.title = ggplot2::element_text(size = 14, face = "bold", hjust = 0.5),
-      plot.subtitle = ggplot2::element_text(size = 11, hjust = 0.5, color = "gray40"),
-      axis.title = ggplot2::element_text(size = 12),
-      axis.text = ggplot2::element_text(size = 10),
-      legend.title = ggplot2::element_text(size = 11),
-      legend.text = ggplot2::element_text(size = 10),
-      panel.grid.minor = ggplot2::element_blank()
-    ) +
-    ggplot2::labs(
-      title = sprintf("Volcano Plot: %s", group_name),
-      subtitle = sprintf(
-        # "Features: %d total | %d upregulated | %d downregulated\nThresholds: |log2FC| >= %.2f, adj. p-value < %.3f",
-        # n_total, n_up, n_down, log2(fcUP), adjpvalue
-        "Features: %d total | %d upregulated | %d downregulated | Min FC = %.2f | Max FC = %.2f \nThresholds: %.2f <= log2FC <= %.2f, adj. p-value < %.3f",
-        n_total, n_up, n_down, fc_min, fc_max, log2(fcUP), log2(fcDown), adjpvalue
-      ),
-      x = "Log2 Fold Change",
-      y = "-Log10 (Adjusted P-value)",
-      caption = sprintf("FC thresholds: >=%.2f (up) or <=%.2f (down)", fcUP, fcDown)
-    ) +
-    # Add threshold lines
-    ggplot2::geom_hline(
-      yintercept = -log10(adjpvalue),
-      linetype = "dashed",
-      color = "gray50",
-      linewidth = 0.8,
-      alpha = 0.8
-    ) +
-    ggplot2::geom_vline(
-      xintercept = c(log2(fcDown), log2(fcUP)),
-      linetype = "dashed",
-      color = "gray50",
-      linewidth = 0.8,
-      alpha = 0.8
+    # --- Find matching fold change data ---
+    possible_names <- c(
+      paste(group1, "vs.", group2, sep = " "),
+      paste(group2, "vs.", group1, sep = " ")
     )
 
-  return(p)
+    fc_data <- NULL
+    group_name <- NULL
+
+    for (name in possible_names) {
+      fc_key <- paste0("data_combined_", name)
+      if (fc_key %in% names(FCData) && !is.null(FCData[[fc_key]])) {
+        fc_data <- FCData[[fc_key]]
+        group_name <- name
+        break
+      }
+    }
+
+    if (is.null(fc_data)) {
+      if (verbose) warning(sprintf("No fold change data found for %s vs. %s", group1, group2))
+      next
+    }
+
+    # Remove 'Feature' column if it exists
+    if ("Feature" %in% colnames(fc_data)) {
+      fc_data$Feature <- NULL
+    }
+
+    # --- Process fold change data ---
+    fc_processed <- fc_data %>%
+      tibble::rownames_to_column("Feature") %>%
+      dplyr::arrange(.data$Feature)
+
+    # --- Process comparative analysis data ---
+    ca_processed <- CAData$results %>%
+      tibble::rownames_to_column("Feature") %>%
+      dplyr::arrange(.data$Feature)
+
+    # # --- Merge and classify data ---
+    # required_fc_cols <- c("Feature", "fold_change", "log2_fc")
+    # required_ca_cols <- c("Feature", "omnibus_p_value")
+    #
+    # if (!all(required_fc_cols %in% colnames(fc_processed))) {
+    #   missing_cols <- setdiff(required_fc_cols, colnames(fc_processed))
+    #   if (verbose) warning(sprintf("Missing required columns in fold change data for %s: %s",
+    #                                group_name, paste(missing_cols, collapse = ", ")))
+    #   next
+    # }
+    #
+    # if (!all(required_ca_cols %in% colnames(ca_processed))) {
+    #   missing_cols <- setdiff(required_ca_cols, colnames(ca_processed))
+    #   if (verbose) warning(sprintf("Missing required columns in comparative analysis data for %s: %s",
+    #                                group_name, paste(missing_cols, collapse = ", ")))
+    #   next
+    # }
+    #
+    # volcano_data <- dplyr::full_join(fc_processed, ca_processed, by = "Feature") %>%
+    #   dplyr::rename(
+    #     Fold_Change = fold_change,
+    #     Log2_Fold_Change = log2_fc,
+    #     P_Value = `omnibus_p_value`,
+    #     Adjusted_P_Value = `omnibus_p_value`
+    #   ) %>%
+    #   dplyr::rowwise() %>%
+    #   dplyr::mutate(
+    #     # Handle potential NA values
+    #     Fold_Change = ifelse(is.na(.data$Fold_Change), 1, .data$Fold_Change),
+    #     Adjusted_P_Value = min(dplyr::c_across(dplyr::starts_with("posthoc_p_"))),
+    #
+    #     # Classify significance
+    #     Significance = dplyr::case_when(
+    #       round(.data$Fold_Change, 2) >= fcUP & round(.data$Adjusted_P_Value, 3) < adjpvalue ~ "Upregulated",
+    #       round(.data$Fold_Change, 2) <= fcDown & round(.data$Adjusted_P_Value, 3) < adjpvalue ~ "Downregulated",
+    #       TRUE ~ "Not Significant"
+    #     ),
+    #
+    #     # Create log10 p-value for plotting
+    #     Neg_Log10_Adj_P = -log10(pmax(.data$Adjusted_P_Value, .Machine$double.eps))
+    #   ) %>%
+    #   dplyr::arrange(dplyr::desc(.data$Fold_Change))
+
+    # --- Merge and classify data ---
+    required_fc_cols <- c("Feature", "fold_change", "log2_fc")
+    required_ca_cols <- c("Feature", "omnibus_p_value")
+
+    if (!all(required_fc_cols %in% colnames(fc_processed))) {
+      missing_cols <- setdiff(required_fc_cols, colnames(fc_processed))
+      if (verbose) warning(sprintf("Missing required columns in fold change data for %s: %s",
+                                   group_name, paste(missing_cols, collapse = ", ")))
+      next
+    }
+
+    if (!all(required_ca_cols %in% colnames(ca_processed))) {
+      missing_cols <- setdiff(required_ca_cols, colnames(ca_processed))
+      if (verbose) warning(sprintf("Missing required columns in comparative analysis data for %s: %s",
+                                   group_name, paste(missing_cols, collapse = ", ")))
+      next
+    }
+
+    # volcano_data <- dplyr::full_join(fc_processed, ca_processed, by = "Feature") %>%
+    #   dplyr::rename(
+    #     Fold_Change = fold_change,
+    #     Log2_Fold_Change = log2_fc,
+    #     P_Value = `omnibus_p_value`
+    #   ) %>%
+    #   dplyr::rowwise() %>%
+    #   dplyr::mutate(
+    #     # Handle potential NA values
+    #     Fold_Change = ifelse(is.na(.data$Fold_Change), 1, .data$Fold_Change),
+    #
+    #     # For 2 groups: use omnibus p-value directly
+    #     # For 3+ groups: use minimum of post-hoc p-values
+    #     Adjusted_P_Value = {
+    #       posthoc_cols <- dplyr::c_across(dplyr::starts_with("posthoc_p_"))
+    #       if (length(posthoc_cols) > 0 && any(!is.na(posthoc_cols))) {
+    #         min(posthoc_cols, na.rm = TRUE)
+    #       } else {
+    #         .data$P_Value
+    #       }
+    #     },
+    #
+    #     # Classify significance
+    #     Significance = dplyr::case_when(
+    #       round(.data$Fold_Change, 2) >= fcUP & round(.data$Adjusted_P_Value, 3) < adjpvalue ~ "Upregulated",
+    #       round(.data$Fold_Change, 2) <= fcDown & round(.data$Adjusted_P_Value, 3) < adjpvalue ~ "Downregulated",
+    #       TRUE ~ "Not Significant"
+    #     ),
+    #
+    #     # Create log10 p-value for plotting
+    #     Neg_Log10_Adj_P = -log10(pmax(.data$Adjusted_P_Value, .Machine$double.eps))
+    #   ) %>%
+    #   dplyr::arrange(dplyr::desc(.data$Fold_Change))
+
+    volcano_data <- dplyr::full_join(fc_processed, ca_processed, by = "Feature") %>%
+      dplyr::rename(
+        Fold_Change = fold_change,
+        Log2_Fold_Change = log2_fc,
+        P_Value = `omnibus_p_value`
+      ) %>%
+      dplyr::rowwise() %>%
+      dplyr::mutate(
+        # Handle potential NA values
+        Fold_Change = ifelse(is.na(.data$Fold_Change), 1, .data$Fold_Change),
+
+        # For 2 groups: use omnibus p-value directly
+        # For 3+ groups: use minimum of post-hoc p-values
+        Adjusted_P_Value = {
+          posthoc_cols <- dplyr::c_across(dplyr::starts_with("posthoc_p_"))
+          if (length(posthoc_cols) > 0 && any(!is.na(posthoc_cols))) {
+            min(posthoc_cols, na.rm = TRUE)
+          } else {
+            .data$P_Value
+          }
+        },
+
+        # Create rounded versions for consistent classification and display
+        FC_rounded = round(.data$Fold_Change, 2),
+        AdjP_rounded = round(.data$Adjusted_P_Value, 3),
+
+        # Classify significance using rounded values
+        Significance = dplyr::case_when(
+          .data$FC_rounded >= fcUP & .data$AdjP_rounded < adjpvalue ~ "Upregulated",
+          .data$FC_rounded <= fcDown & .data$AdjP_rounded < adjpvalue ~ "Downregulated",
+          TRUE ~ "Not Significant"
+        ),
+
+        # Create log10 p-value for plotting
+        Neg_Log10_Adj_P = -log10(pmax(.data$Adjusted_P_Value, .Machine$double.eps))
+      ) %>%
+      dplyr::ungroup() %>%
+      dplyr::arrange(dplyr::desc(.data$Fold_Change))
+
+    if (nrow(volcano_data) == 0) {
+      if (verbose) message(sprintf("No features found for %s", group_name))
+      next
+    }
+
+    # --- Create filtered dataset ---
+    filtered_data <- volcano_data %>%
+      dplyr::filter(.data$Significance != "Not Significant")
+
+    # # --- Generate summary statistics ---
+    # summary_table <- volcano_data %>%
+    #   dplyr::count(.data$Significance, name = "Count") %>%
+    #   dplyr::mutate(Percentage = round(.data$Count / sum(.data$Count) * 100, 2))
+    #
+    # n_up <- sum(volcano_data$Significance == "Upregulated")
+    # n_down <- sum(volcano_data$Significance == "Downregulated")
+    #
+    # summary_stats <- list(
+    #   Comparison = group_name,
+    #   Total_Features = nrow(volcano_data),
+    #   Significant_Features = sum(volcano_data$Significance != "Not Significant"),
+    #   Upregulated_Count = n_up,
+    #   Downregulated_Count = n_down,
+    #   Not_Significant_Count = sum(volcano_data$Significance == "Not Significant"),
+    #   Summary_Table = summary_table,
+    #   Max_Log2_FC = max(abs(volcano_data$Log2_Fold_Change), na.rm = TRUE),
+    #   Min_Adj_P_Value = min(volcano_data$Adjusted_P_Value, na.rm = TRUE)
+    # )
+    #
+    # # --- Create volcano plot ---
+    # n_total <- nrow(volcano_data)
+    # fc_max <- max(volcano_data$Fold_Change, na.rm = TRUE)
+    # fc_min <- min(volcano_data$Fold_Change, na.rm = TRUE)
+    #
+    # plot_obj <- ggplot2::ggplot(volcano_data, ggplot2::aes(x = .data$Log2_Fold_Change, y = .data$Neg_Log10_Adj_P)) +
+    #   ggplot2::geom_point(
+    #     ggplot2::aes(color = .data$Significance),
+    #     alpha = 0.6,
+    #     size = 1.2
+    #   ) +
+    #   ggplot2::scale_color_manual(
+    #     values = c(
+    #       "Not Significant" = "#808080",
+    #       "Upregulated" = "#E31A1C",
+    #       "Downregulated" = "#1F78B4"
+    #     ),
+    #     name = "Regulation"
+    #   ) +
+    #   ggplot2::theme_minimal() +
+    #   ggplot2::theme(
+    #     plot.title = ggplot2::element_text(size = 14, face = "bold", hjust = 0.5),
+    #     plot.subtitle = ggplot2::element_text(size = 11, hjust = 0.5, color = "gray40"),
+    #     axis.title = ggplot2::element_text(size = 12),
+    #     axis.text = ggplot2::element_text(size = 10),
+    #     legend.title = ggplot2::element_text(size = 11),
+    #     legend.text = ggplot2::element_text(size = 10),
+    #     panel.grid.minor = ggplot2::element_blank()
+    #   ) +
+    #   ggplot2::labs(
+    #     title = sprintf("Volcano Plot: %s", group_name),
+    #     subtitle = sprintf(
+    #       "Features: %d total | %d upregulated | %d downregulated | Min FC = %.2f | Max FC = %.2f \nThresholds: %.2f >= log2FC >= %.2f, adj. p-value < %.3f",
+    #       n_total, n_up, n_down, fc_min, fc_max, log2(fcDown), log2(fcUP), adjpvalue
+    #     ),
+    #     x = "Log2 Fold Change",
+    #     y = "-Log10 (Adjusted P-value)",
+    #     caption = sprintf("FC thresholds: >=%.2f (up) or <=%.2f (down)", fcUP, fcDown)
+    #   ) +
+    #   ggplot2::geom_hline(
+    #     yintercept = -log10(adjpvalue),
+    #     linetype = "dashed",
+    #     color = "gray50",
+    #     linewidth = 0.8,
+    #     alpha = 0.8
+    #   ) +
+    #   ggplot2::geom_vline(
+    #     xintercept = c(log2(fcDown), log2(fcUP)),
+    #     linetype = "dashed",
+    #     color = "gray50",
+    #     linewidth = 0.8,
+    #     alpha = 0.8
+    #   )
+
+    # --- Generate summary statistics ---
+    summary_table <- volcano_data %>%
+      dplyr::count(.data$Significance, name = "Count") %>%
+      dplyr::mutate(Percentage = round(.data$Count / sum(.data$Count) * 100, 2))
+
+    n_up <- sum(volcano_data$Significance == "Upregulated")
+    n_down <- sum(volcano_data$Significance == "Downregulated")
+
+    summary_stats <- list(
+      Comparison = group_name,
+      Total_Features = nrow(volcano_data),
+      Significant_Features = sum(volcano_data$Significance != "Not Significant"),
+      Upregulated_Count = n_up,
+      Downregulated_Count = n_down,
+      Not_Significant_Count = sum(volcano_data$Significance == "Not Significant"),
+      Summary_Table = summary_table,
+      Max_Log2_FC = max(abs(volcano_data$Log2_Fold_Change), na.rm = TRUE),
+      Min_Adj_P_Value = min(volcano_data$Adjusted_P_Value, na.rm = TRUE)
+    )
+
+    # --- Create volcano plot ---
+    n_total <- nrow(volcano_data)
+    # Use rounded values for min/max display to match classification logic
+    fc_max <- max(volcano_data$FC_rounded, na.rm = TRUE)
+    fc_min <- min(volcano_data$FC_rounded, na.rm = TRUE)
+
+    plot_obj <- ggplot2::ggplot(volcano_data, ggplot2::aes(x = .data$Log2_Fold_Change, y = .data$Neg_Log10_Adj_P)) +
+      ggplot2::geom_point(
+        ggplot2::aes(color = .data$Significance),
+        alpha = 0.6,
+        size = 1.2
+      ) +
+      ggplot2::scale_color_manual(
+        values = c(
+          "Not Significant" = "#808080",
+          "Upregulated" = "#E31A1C",
+          "Downregulated" = "#1F78B4"
+        ),
+        name = "Regulation"
+      ) +
+      ggplot2::theme_minimal() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 14, face = "bold", hjust = 0.5),
+        plot.subtitle = ggplot2::element_text(size = 11, hjust = 0.5, color = "gray40"),
+        axis.title = ggplot2::element_text(size = 12),
+        axis.text = ggplot2::element_text(size = 10),
+        legend.title = ggplot2::element_text(size = 11),
+        legend.text = ggplot2::element_text(size = 10),
+        panel.grid.minor = ggplot2::element_blank()
+      ) +
+      ggplot2::labs(
+        title = sprintf("Volcano Plot: %s", group_name),
+        subtitle = sprintf(
+          "Features: %d total | %d upregulated | %d downregulated | Min FC = %.2f | Max FC = %.2f \nThresholds: %.2f >= log2FC >= %.2f, adj. p-value < %.3f",
+          n_total, n_up, n_down, fc_min, fc_max, log2(fcDown), log2(fcUP), adjpvalue
+        ),
+        x = "Log2 Fold Change",
+        y = "-Log10 (Adjusted P-value)",
+        caption = sprintf("FC thresholds: >=%.2f (up) or <=%.2f (down)", fcUP, fcDown)
+      ) +
+      ggplot2::geom_hline(
+        yintercept = -log10(adjpvalue),
+        linetype = "dashed",
+        color = "gray50",
+        linewidth = 0.8,
+        alpha = 0.8
+      ) +
+      ggplot2::geom_vline(
+        xintercept = c(log2(fcDown), log2(fcUP)),
+        linetype = "dashed",
+        color = "gray50",
+        linewidth = 0.8,
+        alpha = 0.8
+      )
+
+    if (show_plots) {
+      print(plot_obj)
+    }
+
+    # --- Store results ---
+    volcano_results$VolcanoPlots[[group_name]] <- plot_obj
+    volcano_results[[paste0("VolcanoData_", gsub(" ", "_", group_name))]] <- volcano_data
+    volcano_results[[paste0("VolcanoData_filtered_", gsub(" ", "_", group_name))]] <- filtered_data
+    volcano_results$Summary[[group_name]] <- summary_stats
+  }
+
+  # ========== FINALIZE ==========
+
+  if (verbose) {
+    message("Volcano plot analysis completed successfully!")
+    message(sprintf("Generated %d plot(s) and datasets", length(volcano_results$VolcanoPlots)))
+  }
+
+  return(volcano_results)
 }

@@ -4,7 +4,7 @@
 \alias{finalize_data_structure}
 \title{Finalize Data Structure}
 \usage{
-finalize_data_structure(raw_data)
+finalize_data_structure(processed_data, feature_cols_processed)
 }
 \description{
 Finalize Data Structure

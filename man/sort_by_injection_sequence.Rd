@@ -4,7 +4,7 @@
 \alias{sort_by_injection_sequence}
 \title{Sort Data by Injection Sequence}
 \usage{
-sort_by_injection_sequence(raw_data)
+sort_by_injection_sequence(processed_data)
 }
 \description{
 Sort Data by Injection Sequence

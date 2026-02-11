@@ -7,10 +7,13 @@
 initialize_results_object(
   file_location,
   sheet_name,
+  skip_rows,
+  separator,
   validate_qc,
   allow_missing_optional,
   clean_names,
-  merge_duplicate_samples_by
+  merge_duplicate_samples_by,
+  start_time
 )
 }
 \description{

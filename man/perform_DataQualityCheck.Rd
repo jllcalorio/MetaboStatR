@@ -17,123 +17,42 @@ perform_DataQualityCheck(
 )
 }
 \arguments{
-\item{file_location}{Character string specifying the file path. If NULL, an interactive
-file selection dialog will open. Supported formats: .xlsx, .csv, .tsv, .txt}
+\item{file_location}{Character string specifying the file path.}
 
-\item{sheet_name}{Character string specifying the Excel worksheet name. Ignored for
-non-Excel files. If NULL for Excel files, the first sheet is used.}
+\item{sheet_name}{Character string specifying the Excel worksheet name.}
 
-\item{skip_rows}{Integer specifying the number of rows to skip when reading the file.
-Default is 0.}
+\item{skip_rows}{Integer specifying the number of rows to skip. Default is 0.}
 
-\item{separator}{Character string specifying the field separator for delimited files.
-Common values: "," (comma), "\\t" (tab). Default is ",". Ignored for Excel files.}
+\item{separator}{Character string specifying the field separator. Default is ",".}
 
-\item{validate_qc}{Logical indicating whether to enforce QC validation rules.
-Default is TRUE.}
+\item{validate_qc}{Logical indicating whether to enforce QC validation rules. Default is TRUE.}
 
-\item{allow_missing_optional}{Logical indicating whether to allow missing values in
-optional metadata rows (SubjectID, Replicate, Normalization, Response). Default is TRUE.}
+\item{allow_missing_optional}{Logical (currently unused but kept for compatibility). Default is TRUE.}
 
-\item{clean_names}{Logical indicating whether to clean special characters from names.
-Default is TRUE.}
+\item{clean_names}{Logical indicating whether to clean special characters. Default is TRUE.}
 
-\item{merge_duplicate_samples_by}{Character string specifying how to handle duplicate
-sample names. Options: NULL (default, throws error on duplicates), "mean" (average
-duplicate samples), "median" (take median of duplicate samples). If no duplicates exist,
-this parameter is ignored. When merging, metadata from the first occurrence is retained.}
+\item{merge_duplicate_samples_by}{Character string: NULL, "mean", or "median". Default is NULL.}
 
 \item{verbose}{Logical indicating whether to display progress messages. Default is TRUE.}
 }
 \value{
 A list containing:
-\item{raw_data}{Data frame with the original data as loaded from the file}
-\item{quality_checked_data}{Data frame with validated and cleaned data, sorted by injection sequence}
-\item{metadata_summary}{Summary statistics of the metadata}
+\item{raw_data}{Original data as loaded}
+\item{metadata_summary}{Summary statistics (Groups as dataframe)}
 \item{validation_report}{Detailed validation results}
 \item{file_info}{Information about the source file}
-\item{processing_log}{Log of all processing steps performed}
+\item{processing_log}{Log of all processing steps including execution time}
 }
 \description{
-This function imports and validates metabolomics data from Excel, CSV, TSV, or text files,
-performing comprehensive quality controls to ensure data integrity and compatibility with
-downstream analysis functions. The function validates data structure, checks for required
-metadata rows, ensures uniqueness constraints, cleans special characters from identifiers,
-and prepares data for preprocessing pipelines.
+This function imports and validates metabolomics data, performing comprehensive
+quality controls with strict structural requirements.
 
 Key validation checks include:
 \itemize{
-\item Presence of required metadata rows (Sample, SubjectID, Replicate, Group, Batch, Injection, Normalization, Response)
-\item Uniqueness of sample names, injection sequences, and feature/metabolite identifiers
-\item Proper QC sample annotation (empty values in SubjectID, Replicate, Normalization, Response for QC samples)
-\item Numeric validation of feature/metabolite data
-\item Character cleaning and standardization of identifiers
-\item Optional merging of duplicate samples by mean or median
+\item Strict Metadata Order: Row 1=Sample, Row 2=Group, Row 3=Batch, Row 4=Injection.
+\item Variable Metadata: Allows any number of rows between Injection and Response.
+\item Metadata Uniqueness: Ensures no duplicate metadata row names.
+\item Numeric validation of all feature/metabolite data.
+\item Merging of duplicate samples by mean or median.
 }
-}
-\details{
-The input data must follow a specific structure:
-\itemize{
-\item Row 1: "Sample" - Unique sample identifiers (no spaces recommended)
-\item Row 2: "SubjectID" - Numeric subject identifiers (can be non-unique)
-\item Row 3: "Replicate" - Replicate identifiers (can be non-unique)
-\item Row 4: "Group" - Group assignments including QC samples
-\item Row 5: "Group2" - 2nd Group assignments including QC samples (this another 'Group' is reserved for whenever another group is available)
-\item Row 6: "Batch" - Batch numbers
-\item Row 7: "Injection" - Unique injection sequence numbers
-\item Row 8: "Normalization" - Concentration markers (e.g., osmolality)
-\item Row 9: "Response" - Response variable values
-\item Rows 10+: Feature/metabolite data (e.g., m/z@retention_time format)
-}
-
-Missing values should be left blank or encoded as 0. QC samples in the Group row
-must have empty values in SubjectID, Replicate, Normalization, and Response rows.
-
-When \code{merge_duplicate_samples_by} is set to "mean" or "median", duplicate samples
-are identified by their Sample name and merged accordingly. The metadata (SubjectID,
-Replicate, Group, Group2, Batch, Normalization, Response) from the first occurrence
-is retained, while the Injection value is set to the minimum injection number among
-duplicates. Feature/metabolite values are aggregated using the specified method.
-}
-\examples{
-\dontrun{
-# Basic usage with file selection dialog
-result <- perform_DataQualityCheck()
-
-# Specify file location directly
-result <- perform_DataQualityCheck(
-  file_location = "path/to/metabolomics_data.xlsx",
-  sheet_name = "Sheet1"
-)
-
-# CSV file with custom separator
-result <- perform_DataQualityCheck(
-  file_location = "path/to/data.csv",
-  separator = ";",
-  skip_rows = 1
-)
-
-# Merge duplicate samples by taking their mean
-result <- perform_DataQualityCheck(
-  file_location = "path/to/data.xlsx",
-  merge_duplicate_samples_by = "mean"
-)
-
-# Merge duplicate samples by taking their median
-result <- perform_DataQualityCheck(
-  file_location = "path/to/data.xlsx",
-  merge_duplicate_samples_by = "median"
-)
-
-# Access results
-clean_data <- result$raw_data
-validation_summary <- result$validation_report
-}
-
-}
-\seealso{
-\code{\link{perform_PreprocessingPeakData}} for the next step in the analysis pipeline
-}
-\author{
-John Lennon L. Calorio
 }

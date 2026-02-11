@@ -4,7 +4,7 @@
 \alias{load_csv_file}
 \title{Load CSV File}
 \usage{
-load_csv_file(file_location, separator, skip_rows)
+load_csv_file(file_location, separator, skip_rows, verbose)
 }
 \description{
 Load CSV File

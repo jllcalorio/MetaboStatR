@@ -4,7 +4,12 @@
 \alias{validate_uniqueness_constraints}
 \title{Validate Uniqueness Constraints}
 \usage{
-validate_uniqueness_constraints(raw_data, merge_duplicate_samples_by, verbose)
+validate_uniqueness_constraints(
+  processed_data,
+  merge_duplicate_samples_by,
+  feature_cols_processed,
+  verbose
+)
 }
 \description{
 Validate Uniqueness Constraints

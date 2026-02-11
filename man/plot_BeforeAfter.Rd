@@ -19,7 +19,7 @@ function containing original data, transformed data, and metadata.}
 
 \item{scaled}{Character. Specifies which preprocessed data to visualize:
 \itemize{
-\item \code{"PCA"}: Uses PCA-scaled preprocessed data
+\item \code{"NONPLS"}: Uses NONPLS-scaled preprocessed data
 \item \code{"PLS"}: Uses PLS-scaled preprocessed data
 }
 Default: \code{"PLS"}}
@@ -60,7 +60,7 @@ List containing:
 Creates comprehensive visualizations comparing data distributions and patterns
 before and after preprocessing steps. Generates density plots and box plots
 from either sample or feature perspectives to assess preprocessing effectiveness.
-Supports both PCA and PLS scaled data visualization with intelligent
+Supports both NON-PLS and PLS scaled data visualization with intelligent
 random sampling for large datasets.
 }
 \examples{
@@ -72,10 +72,10 @@ plots <- plot_BeforeAfter(
   group_by = "Sample"
 )
 
-# Feature perspective with PCA scaling
+# Feature perspective with NONPLS scaling
 feature_plots <- plot_BeforeAfter(
   data = preprocessing_results,
-  scaled = "PCA",
+  scaled = "NONPLS",
   group_by = "Feature",
   n_random_features = 20
 )

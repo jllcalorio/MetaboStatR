@@ -171,7 +171,7 @@ perform_Export2Excel <- function(
 }
 
 
-#' Process Multiple Input Lists (Simplified)
+#' Process Multiple Input Lists
 #' @noRd
 .process_multiple_inputs <- function(results) {
   if (missing(results) || is.null(results)) {
@@ -354,7 +354,7 @@ perform_Export2Excel <- function(
 }
 
 
-#' Enhanced Input Validation
+#' Input Validation
 #' @noRd
 .validate_inputs_export2excel <- function(results, folder_name, file_name, include_timestamp,
                                           overwrite, row_names, freeze_first_row, auto_width, max_sheets) {
@@ -406,19 +406,27 @@ perform_Export2Excel <- function(
 }
 
 
-#' Optimized Data Frame Extraction (Including Empty Ones)
+#' Data Frame Extraction (Including Empty Ones) - RECURSIVE VERSION
 #' @noRd
+# .extract_dataframes_optimized <- function(results, max_sheets, include_empty = TRUE) {
+#   # Recursively extract all data frames from nested lists
+#   df_list <- .extract_dataframes_recursive(results)
+#
+#   # Apply sheet limit
+#   if (length(df_list) > max_sheets) {
+#     warning(sprintf("Found %d data frames but max_sheets is set to %d. Only the first %d will be exported.",
+#                     length(df_list), max_sheets, max_sheets), call. = FALSE)
+#     df_list <- df_list[1:max_sheets]
+#   }
+#
+#   # Report summary
+#   message(sprintf("Found %d data frame(s) to export.", length(df_list)))
+#
+#   return(df_list)
+# }
 .extract_dataframes_optimized <- function(results, max_sheets, include_empty = TRUE) {
-  # Pre-allocate logical vector for better performance
-  n_items <- length(results)
-  df_indices <- logical(n_items)
-
-  # Vectorized check for data frames
-  for (i in seq_len(n_items)) {
-    df_indices[i] <- .is_dataframe_or_tibble(results[[i]])
-  }
-
-  df_list <- results[df_indices]
+  # Recursively extract all data frames from nested lists
+  df_list <- .extract_dataframes_recursive(results, depth = 0, max_depth = 100)
 
   # Apply sheet limit
   if (length(df_list) > max_sheets) {
@@ -427,15 +435,119 @@ perform_Export2Excel <- function(
     df_list <- df_list[1:max_sheets]
   }
 
-  # Report excluded items
-  if (length(df_list) < n_items) {
-    excluded_count <- n_items - length(df_list)
-    message(sprintf("Excluded %d non-data frame objects from export.", excluded_count))
-  }
+  # Report summary
+  message(sprintf("Found %d data frame(s) to export.", length(df_list)))
 
   return(df_list)
 }
 
+
+#' Recursively Extract Data Frames from Nested Lists
+#' @noRd
+# .extract_dataframes_recursive <- function(x, name_prefix = "", result_list = list()) {
+#   if (.is_dataframe_or_tibble(x)) {
+#     # Base case: x is a data frame
+#     return(list(x))
+#   } else if (is.list(x)) {
+#     # Recursive case: x is a list
+#     df_list <- list()
+#
+#     for (i in seq_along(x)) {
+#       element <- x[[i]]
+#       element_name <- names(x)[i]
+#
+#       # Handle unnamed elements
+#       if (is.null(element_name) || element_name == "") {
+#         element_name <- paste0("Item_", i)
+#       }
+#
+#       # Create hierarchical name
+#       if (nchar(name_prefix) > 0) {
+#         full_name <- paste(name_prefix, element_name, sep = "_")
+#       } else {
+#         full_name <- element_name
+#       }
+#
+#       if (.is_dataframe_or_tibble(element)) {
+#         # Add data frame with its name
+#         df_list[[full_name]] <- element
+#       } else if (is.list(element)) {
+#         # Recursively process nested lists
+#         nested_dfs <- .extract_dataframes_recursive(element, name_prefix = full_name)
+#         if (length(nested_dfs) > 0) {
+#           df_list <- c(df_list, nested_dfs)
+#         }
+#       }
+#     }
+#
+#     return(df_list)
+#   } else {
+#     # Not a data frame or list
+#     return(list())
+#   }
+# }
+.extract_dataframes_recursive <- function(x, name_prefix = "", depth = 0, max_depth = 100) {
+  # Safeguard against infinite recursion
+  if (depth > max_depth) {
+    warning(sprintf("Maximum recursion depth (%d) reached. Stopping recursion for safety.", max_depth),
+            call. = FALSE)
+    return(list())
+  }
+
+  # Base case: x is a data frame or tibble
+  if (.is_dataframe_or_tibble(x)) {
+    return(list(x))
+  }
+
+  # Base case: x is not a list (atomic vector, function, etc.)
+  if (!is.list(x)) {
+    return(list())
+  }
+
+  # Recursive case: x is a list
+  # Check for empty list
+  if (length(x) == 0) {
+    return(list())
+  }
+
+  df_list <- list()
+
+  for (i in seq_along(x)) {
+    element      <- x[[i]]
+    element_name <- names(x)[i]
+
+    # Handle unnamed elements
+    if (is.null(element_name) || element_name == "") {
+      element_name <- paste0("Item_", i)
+    }
+
+    # Create hierarchical name
+    if (nchar(name_prefix) > 0) {
+      full_name <- paste(name_prefix, element_name, sep = "_")
+    } else {
+      full_name <- element_name
+    }
+
+    # Check if element is a data frame
+    if (.is_dataframe_or_tibble(element)) {
+      # Add data frame with its name
+      df_list[[full_name]] <- element
+    } else if (is.list(element) && length(element) > 0) {
+      # Only recurse if element is a non-empty list
+      # Recursively process nested lists with incremented depth
+      nested_dfs <- .extract_dataframes_recursive(element,
+                                                  name_prefix = full_name,
+                                                  depth       = depth + 1,
+                                                  max_depth   = max_depth)
+      if (length(nested_dfs) > 0) {
+        df_list <- c(df_list, nested_dfs)
+      }
+    }
+    # Silently skip non-list, non-dataframe elements
+  }
+
+  return(df_list)
+}
 
 #' Create Output Directory
 #' @noRd
@@ -497,13 +609,13 @@ perform_Export2Excel <- function(
 }
 
 
-#' Optimized Sheet Name Sanitization
+#' Sheet Name Sanitation
 #' @noRd
 .sanitize_sheet_name <- function(name, existing_names = character(0)) {
   # Remove invalid characters for Excel sheet names
   name <- gsub("[\\[\\]:*?/\\\\]", "_", name)
 
-  # Remove leading/trailing whitespace and multiple underscores
+  # Remove leading/trailing white space and multiple underscores
   name <- trimws(name)
   name <- gsub("_{2,}", "_", name)
   name <- gsub("^_|_$", "", name)
@@ -542,102 +654,80 @@ perform_Export2Excel <- function(
   return(name)
 }
 
-# #' Intelligent Truncation of Long Names
-# #' @noRd
-# .intelligent_truncate <- function(name, max_length) {
-#   if (nchar(name) <= max_length) {
-#     return(name)
-#   }
-#
-#   # Strategy 1: Keep first and last parts, remove middle
-#   if (max_length >= 10 && nchar(name) > max_length) {
-#     first_part_length <- floor(max_length / 2) - 1
-#     last_part_length <- max_length - first_part_length - 2
-#     first_part <- substr(name, 1, first_part_length)
-#     last_part <- substr(name, nchar(name) - last_part_length + 1, nchar(name))
-#     truncated <- paste0(first_part, "..", last_part)
-#
-#     if (nchar(truncated) <= max_length) {
-#       return(truncated)
-#     }
-#   }
-#
-#   # Strategy 2: Remove vowels (except first character)
-#   if (nchar(name) > 1) {
-#     first_char <- substr(name, 1, 1)
-#     rest_chars <- substr(name, 2, nchar(name))
-#     rest_no_vowels <- gsub("[aeiouAEIOU]", "", rest_chars)
-#     truncated <- paste0(first_char, rest_no_vowels)
-#
-#     if (nchar(truncated) <= max_length) {
-#       return(truncated)
-#     }
-#   }
-#
-#   # Strategy 3: Simple truncation
-#   return(substr(name, 1, max_length))
-# }
-
 #' Intelligent Truncation of Long Names
 #' @noRd
-.intelligent_truncate <- function(name, max_length) {
+.intelligent_truncate <- function(name, max_length, seed = 123) {
   if (nchar(name) <= max_length) {
     return(name)
   }
 
-  # Excel's worksheet name limit is 31 characters. For this function,
-  # the max_length parameter is the limit, which can be different.
+  # Calculate how many characters need to be removed
+  chars_to_remove <- nchar(name) - max_length
 
-  # Strategy 1: Remove all vowels (except first character)
-  if (nchar(name) > 1) {
-    first_char <- substr(name, 1, 1)
-    rest_chars <- substr(name, 2, nchar(name))
-    rest_no_vowels <- gsub("[aeiouAEIOU]", "", rest_chars)
-    vowel_removed_name <- paste0(first_char, rest_no_vowels)
+  # Split name into character vector once for efficiency
+  name_chars <- strsplit(name, "")[[1]]
+  n_chars <- length(name_chars)
 
-    # If this strategy works, return the name.
-    if (nchar(vowel_removed_name) <= max_length) {
-      return(vowel_removed_name)
+  # Identify vowel positions (vectorized)
+  is_vowel <- grepl("[aeiouAEIOU]", name_chars)
+
+  # Keep first character if it's a vowel
+  if (is_vowel[1]) {
+    is_vowel[1] <- FALSE
+  }
+
+  # Strategy 1: Remove vowels from the end
+  # Find vowel indices that can be removed (excluding first char if vowel)
+  vowel_indices <- which(is_vowel)
+
+  if (length(vowel_indices) > 0) {
+    # Reverse indices to remove from end first
+    vowel_indices_reversed <- rev(vowel_indices)
+
+    # Determine how many vowels to remove
+    vowels_to_remove <- min(chars_to_remove, length(vowel_indices_reversed))
+
+    # Remove vowels from the end
+    indices_to_remove <- vowel_indices_reversed[1:vowels_to_remove]
+    name_chars[indices_to_remove] <- ""
+
+    # Check if we've removed enough
+    remaining_name <- paste(name_chars, collapse = "")
+    if (nchar(remaining_name) <= max_length) {
+      return(remaining_name)
     }
 
-    # Strategy 1.1: Randomly remove remaining vowels if still too long.
+    # Update chars_to_remove for next strategy
+    chars_to_remove <- nchar(remaining_name) - max_length
+  }
 
-    # Create a vector of all characters in the original name
-    name_chars <- strsplit(name, "")[[1]]
-    # Get the indices of all vowels (case-insensitive)
-    vowel_indices <- which(grepl("[aeiouAEIOU]", name_chars))
+  # Strategy 2: Randomly remove consonants if still too long
+  # Identify remaining consonant positions (excluding first character)
+  remaining_chars <- name_chars != ""
+  is_consonant <- !is_vowel & remaining_chars
+  is_consonant[1] <- FALSE  # Keep first character
 
-    # If the first character is a vowel, we should exclude its index
-    # from the list of vowels to be removed.
-    if (length(vowel_indices) > 0 && vowel_indices[1] == 1) {
-      vowel_indices <- vowel_indices[-1]
-    }
+  consonant_indices <- which(is_consonant)
 
-    # Calculate how many characters need to be removed to fit the limit
-    chars_to_remove <- nchar(name) - max_length
+  if (length(consonant_indices) >= chars_to_remove) {
+    # Set seed for reproducibility
+    set.seed(seed)
 
-    # If we have enough vowels to remove
-    if (length(vowel_indices) >= chars_to_remove) {
-      # Randomly select which vowels to remove
-      indices_to_remove <- sample(vowel_indices, chars_to_remove)
-      # Sort indices in reverse to avoid shifting
-      indices_to_remove <- sort(indices_to_remove, decreasing = TRUE)
+    # Randomly select consonants to remove
+    indices_to_remove <- sample(consonant_indices, chars_to_remove)
+    name_chars[indices_to_remove] <- ""
 
-      # Remove the characters at these random indices
-      for (i in indices_to_remove) {
-        name_chars[i] <- ""
-      }
-      return(paste(name_chars, collapse = ""))
-    }
+    return(paste(name_chars, collapse = ""))
   }
 
   # Fallback Strategy: Simple truncation
-  # This serves as a final resort if all other strategies fail.
-  return(substr(name, 1, max_length))
+  # This serves as a final resort if all other strategies fail
+  current_name <- paste(name_chars, collapse = "")
+  return(substr(current_name, 1, max_length))
 }
 
 
-#' Optimized Workbook Creation (Including Empty Data Frames)
+#' Workbook Creation (Including Empty Data Frames)
 #' @noRd
 .create_workbook_optimized <- function(df_list, row_names, freeze_first_row, auto_width, include_empty = TRUE) {
   wb <- openxlsx::createWorkbook()

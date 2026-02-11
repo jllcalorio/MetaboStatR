@@ -6,6 +6,7 @@
 \usage{
 perform_FoldChange(
   data,
+  data_type = "transformed",
   arrangeLevels = NULL,
   sortFC = TRUE,
   qc_patterns = c("SQC", "EQC", "QC"),
@@ -17,9 +18,16 @@ perform_FoldChange(
 \item{data}{List. A preprocessed data object returned by \code{perform_PreprocessingPeakData()}
 or similar preprocessing functions. Must contain:
 \itemize{
-\item \verb{$data_scaledPCA_varFiltered}: Numeric matrix/data.frame of peak data
+\item \verb{$data_transformed_varFiltered}: Numeric matrix/data.frame of peak data (this is the mathematically transformed data)
+\item \verb{$data_normalized_varFiltered}: Numeric matrix/data.frame of normalized peak data
+\item \verb{$data_scaledNONPLS_varFiltered}: Numeric matrix/data.frame of scaled peak data
 \item \verb{$Metadata}: Data.frame with at least a 'Group' column
 }}
+
+\item{data_type}{Character. Type of data to use for fold change calculation.
+Options are "normalized" to use \code{data_normalized_varFiltered},
+"transformed" to use \code{data_transformed_varFiltered},
+or "scaled" to use \code{data_scaledNONPLS_varFiltered}. Default is "transformed".}
 
 \item{arrangeLevels}{Character vector. Optional custom ordering for group levels.
 Must contain all unique group names present in the data (excluding QC samples).
@@ -40,9 +48,10 @@ contains zeros or negative values. Default is \code{1e-8}.}
 \value{
 A list containing:
 \item{FunctionOrigin}{Character. Function name for traceability}
+\item{parameters}{List. Parameters used in the analysis}
 \item{data_shifted}{Data.frame. Adjusted data with minimum value shifted to 1}
 \item{group_summary}{Data.frame. Summary of groups and sample counts}
-\item{comparison_matrix}{Matrix. All pairwise comparisons performed}
+\item{comparison_matrix}{Data.frame. Summary of all pairwise comparisons with min/max FC and log2FC}
 \item{data_combined_GROUP1 vs. GROUP2}{Data.frame. Fold change results for each comparison}
 }
 \description{
@@ -76,6 +85,12 @@ Ensure your data is appropriately normalized before analysis.
 # Basic usage with default parameters
 fc_results <- perform_FoldChange(preprocessed_data)
 
+# Using normalized data
+fc_results <- perform_FoldChange(
+  data = preprocessed_data,
+  data_type = "normalized"
+)
+
 # Custom group ordering and no sorting
 fc_results <- perform_FoldChange(
   data = preprocessed_data,
@@ -87,6 +102,12 @@ fc_results <- perform_FoldChange(
 fc_results <- perform_FoldChange(
   data = preprocessed_data,
   qc_patterns = c("QC", "Blank", "POOL")
+)
+
+# Using scaled data
+fc_results <- perform_FoldChange(
+  data = preprocessed_data,
+  data_type = "scaled"
 )
 }
 

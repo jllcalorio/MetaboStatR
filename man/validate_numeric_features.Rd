@@ -4,7 +4,7 @@
 \alias{validate_numeric_features}
 \title{Validate Numeric Features}
 \usage{
-validate_numeric_features(raw_data)
+validate_numeric_features(processed_data, feature_cols_processed)
 }
 \description{
 Validate Numeric Features

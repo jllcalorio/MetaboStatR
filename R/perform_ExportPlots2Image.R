@@ -157,7 +157,7 @@ perform_ExportPlots2Image <- function(
   start_time <- Sys.time()
 
   # Process and validate inputs (suppress console output)
-  processed_results <- suppressMessages(.process_multiple_plot_inputs(results))
+  processed_results <- .process_multiple_plot_inputs(results)
   .validate_plot_inputs(processed_results, folder_name, file_prefix, image_format,
                         width, height, dpi, include_timestamp, overwrite,
                         use_plot_titles, max_plots, quality, transparent)
@@ -194,8 +194,18 @@ perform_ExportPlots2Image <- function(
          call. = FALSE)
   }
 
+  # Convert to list if it's not already (handles various input types)
   if (!is.list(results)) {
-    stop("'results' must be a list or multiple lists.", call. = FALSE)
+    results <- list(results)
+  }
+
+  # Filter out NULL, environment, and other problematic objects
+  results <- Filter(function(x) {
+    !is.null(x) && !is.environment(x) && (is.list(x) || .is_plot_object(x))
+  }, results)
+
+  if (length(results) == 0) {
+    stop("No valid plot objects or lists found in the input.", call. = FALSE)
   }
 
   # Check if this is a list of lists (multiple lists scenario)
@@ -216,7 +226,6 @@ perform_ExportPlots2Image <- function(
     return(list(results))  # Wrap single list
   }
 }
-
 
 #' Check if input is a list of lists containing plots
 #' @noRd

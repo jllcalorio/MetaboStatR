@@ -2,27 +2,29 @@
 % Please edit documentation in R/perform_PreprocessingPeakData.R
 \name{plot_before_after_correction}
 \alias{plot_before_after_correction}
-\title{Create Before and After Batch Correction Plots}
+\title{Create Before and After Signal Drift and Batch Correction Plots}
 \usage{
 plot_before_after_correction(
   preprocessed_data,
   n_features = 6,
-  feature_names = NULL
+  feature_names = NULL,
+  seed = 123
 )
 }
 \arguments{
 \item{preprocessed_data}{List. Results from the \code{perform_PreprocessingPeakData} function.}
 
-\item{n_features}{Numeric. Number of random features to plot. Default is 6.}
+\item{n_features}{Numeric. Number of random features to plot. Default is 6. Suggested to be an even number.}
 
-\item{feature_names}{Vector. Specific feature names to plot. If provided, overrides n_features.}
+\item{feature_names}{Vector. Specific feature names to plot.}
+
+\item{seed}{Numeric. Random seed for reproducible feature selection. Default is 123.}
 }
 \value{
-A combined plot showing before and after correction for selected features.
+A combined plot grob object (requires ggplot2, gridExtra, grid).
 }
 \description{
 Creates visualization plots comparing data before and after drift/batch correction.
-This function generates plots showing the correction effects for selected features.
 }
 \author{
 John Lennon L. Calorio

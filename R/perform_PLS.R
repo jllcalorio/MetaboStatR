@@ -86,32 +86,30 @@
 #' @importFrom stats cov cor reorder
 #' @importFrom utils combn
 #' @importFrom grDevices colorRampPalette
+#' @importFrom parallelly availableCores
 #'
 #' @references Eriksson et al. (2006). Multi- and Megarvariate Data Analysis. Umetrics Academy. Rosipal and Kramer (2006). Overview and recent advances in partial least squares Tenenhaus (1990). La regression PLS : theorie et pratique. Technip. Wehrens (2011). Chemometrics with R. Springer. Wold et al. (2001). PLS-regression: a basic tool of chemometrics (for PLS)
 #' @references Rohart F, Gautier B, Singh A, Lê Cao K-A. mixOmics: an R package for 'omics feature selection and multiple data integration. PLoS Comput Biol 13(11): e1005752 (for sPLS)
 #' @references Galindo-Prieto B., Eriksson L. and Trygg J. (2014). Variable influence on projection (VIP) for orthogonal projections to latent structures (OPLS). Journal of Chemometrics 28, 623-632. (for getVipVn)
 #'
 #' @export
-perform_PLS <- function(data,
-                        method = "oplsda",
-                        arrangeLevels = NULL,
-                        includeQC = FALSE,
-                        predI = 1,
-                        orthoI = NA,
-                        crossvalI = 10,
-                        permI = 20,
-                        scaleC = "none",
-                        top_features = 20,
-                        keepX = NULL,
-                        ncomp = 2,
-                        validation = "Mfold",
-                        folds = 10,
-                        verbose = TRUE) {
-
-  # # Helper function for memory-efficient operations
-  # gc_if_needed <- function() {
-  #   if (gc.time()[1] %% 10 == 0) invisible(gc())
-  # }
+perform_PLS <- function(
+    data,
+    method = "oplsda",
+    arrangeLevels = NULL,
+    includeQC = FALSE,
+    predI = 1,
+    orthoI = NA,
+    crossvalI = 10,
+    permI = 20,
+    scaleC = "none",
+    top_features = 20,
+    keepX = NULL,
+    ncomp = 2,
+    validation = "Mfold",
+    folds = 10,
+    verbose = TRUE
+) {
 
   # Input validation
   validate_inputs_PLS(data, method, arrangeLevels, predI, orthoI, crossvalI,
@@ -129,6 +127,15 @@ perform_PLS <- function(data,
   )
 
   if (verbose) cat("Starting", toupper(method), "analysis...\n")
+
+  # Parallel setup
+  BPPARAM_to_use <- BiocParallel::SnowParam(workers = parallelly::availableCores(omit = 2))
+  BiocParallel::register(BPPARAM_to_use)
+
+  # Ensure SerialParam is restored even if the function errors
+  on.exit({
+    BiocParallel::register(BiocParallel::SerialParam())
+  }, add = TRUE)
 
   # Prepare data
   pls_data <- prepare_pls_data(data, verbose)
@@ -156,12 +163,11 @@ perform_PLS <- function(data,
   # Generate summary
   results$summary <- generate_analysis_summary(results, method, verbose)
 
-  # Assign class to results and return
-  class(results) <- c("pls_results", "list")
-
   if (verbose) cat("Analysis completed successfully!\n")
   # gc_if_needed()
 
+  # Assign class to results and return
+  class(results) <- c("perform_PLS", "list")
   return(results)
 }
 
@@ -184,8 +190,8 @@ validate_inputs_PLS <- function(data, method, arrangeLevels, predI, orthoI,
 
   # required_components <- c("data_scaledPLS_varFiltered", "Metadata")
   # missing_components <- required_components[!required_components %in% names(data)]
-  # Determine which data source to use based on auto_merge_replicates
-  if (isTRUE(data$Parameters$auto_merge_replicates)) {
+  # Determine which data source to use based on merge_replicates
+  if (isTRUE(data$Parameters$merge_replicates)) {
     selected_data <- "data_scaledPLS_merged"
   } else {
     selected_data <- "data_scaledPLS_varFiltered"
@@ -264,7 +270,7 @@ prepare_pls_data <- function(data, verbose) {
   #   stop("data_scaledPLS_varFiltered is NULL. Please ensure data processing is completed.")
   # }
 
-  # Determine which data source to use based on auto_merge_replicates
+  # Determine which data source to use based on merge_replicates
   if (!is.null(data$data_scaledPLS_merged)) {
     data_matrix <- data$data_scaledPLS_merged
   } else {
@@ -844,69 +850,43 @@ generate_analysis_summary <- function(results, method, verbose) {
   return(summary_info)
 }
 
-#' Print Method for PLS Analysis Results
-#'
-#' @param x A pls_results object returned by perform_PLS
-#' @param ... Additional arguments (not used)
-#' @return Invisibly returns the input object
+# S3 Methods
 #' @export
-print.pls_results <- function(x, ...) {
-  cat("PLS Analysis Results\n")
-  cat("====================\n")
-  cat("Method:", x$method, "\n")
-  cat("Number of comparisons:", x$summary$n_comparisons, "\n")
-  cat("Timestamp:", as.character(x$summary$timestamp), "\n\n")
-
-  if (length(x$summary$comparison_names) > 0) {
-    cat("Comparisons:\n")
-    for (i in seq_along(x$summary$comparison_names)) {
-      cat("  ", i, ".", x$summary$comparison_names[i], "\n")
-    }
-  }
-
-  cat("\nAvailable result components:\n")
-  result_types <- c("results_", "data_", "plot_")
-  for (type in result_types) {
-    matching_keys <- names(x)[grepl(paste0("^", type), names(x))]
-    if (length(matching_keys) > 0) {
-      cat("  ", gsub("_$", "", type), ":", length(matching_keys), "items\n")
-    }
-  }
-
+print.perform_PLS <- function(x, ...) {
+  cat("=== PLS/OPLS-DA Analysis ===\n")
+  cat("Method:      ", toupper(x$method), "\n")
+  cat("Comparisons: ", x$summary$n_comparisons, "\n")
+  cat("Metrics:     ", paste(names(x$summary$performance_metrics[[1]]), collapse=", "), "\n")
   invisible(x)
 }
 
-# #' Plot Method for PLS Analysis Results
-# #'
-# #' @param x A pls_results object returned by perform_PLS
-# #' @param comparison Integer or character specifying which comparison to plot (default: 1)
-# #' @param type Character specifying plot type: "scores", "vipabundance", "splot", "loadings", "abundance"
-# #' @param ... Additional arguments (not used)
-# #' @return A ggplot object
-# #' @export
-# plot.pls_results <- function(x, comparison = 1, type = "scores", ...) {
-#
-#   if (length(x$summary$comparison_names) == 0) {
-#     stop("No comparisons found in results")
-#   }
-#
-#   if (is.numeric(comparison)) {
-#     if (comparison > length(x$summary$comparison_names)) {
-#       stop("Comparison index out of range")
-#     }
-#     comp_name <- x$summary$comparison_names[comparison]
-#   } else {
-#     comp_name <- comparison
-#   }
-#
-#   # Find the appropriate plot
-#   plot_key <- paste0("plot_", stringr::str_to_title(type), "_", comp_name)
-#
-#   if (!plot_key %in% names(x)) {
-#     available_plots <- names(x)[grepl(paste0("_", comp_name, "$"), names(x)) & grepl("^plot_", names(x))]
-#     stop("Plot not found. Available plots for this comparison: ",
-#          paste(gsub("^plot_|_.*$", "", available_plots), collapse = ", "))
-#   }
-#
-#   return(x[[plot_key]])
-# }
+#' @export
+summary.perform_PLS <- function(object, ...) {
+  # Extract performance metrics into a clean dataframe
+  metrics_df <- do.call(rbind, lapply(names(object$summary$performance_metrics), function(n) {
+    m <- object$summary$performance_metrics[[n]]
+    data.frame(Comparison = n, R2Y = m$R2Y, Q2 = m$Q2, Components = m$n_components)
+  }))
+
+  ans <- list(
+    method = object$method,
+    metrics = metrics_df,
+    params = object$parameters
+  )
+  class(ans) <- "summary.perform_PLS"
+  return(ans)
+}
+
+#' @export
+print.summary.perform_PLS <- function(x, ...) {
+  cat("---------------------------------------\n")
+  cat(toupper(x$method), "Model Performance\n")
+  cat("---------------------------------------\n")
+  if (!is.null(x$metrics) && nrow(x$metrics) > 0) {
+    print(x$metrics, row.names=FALSE)
+  } else {
+    cat("No valid models generated.\n")
+  }
+  cat("\nScaling Used:", x$params$scaleC, "\n")
+  invisible(x)
+}

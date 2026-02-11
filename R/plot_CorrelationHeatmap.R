@@ -8,9 +8,9 @@
 #' appropriate data source based on replicate merging settings.
 #'
 #' @param data A list object containing preprocessed data. Must include a component
-#'   named \code{data_scaledPCA_varFiltered} or \code{data_scaledPCA_merged} (typically output from
+#'   named \code{data_scaledNONPLS_varFiltered} or \code{data_scaledNONPLS_merged} (typically output from
 #'   \code{perform_PreprocessingPeakData} function). The function automatically selects
-#'   the appropriate data source based on \code{data$Parameters$auto_merge_replicates}.
+#'   the appropriate data source based on \code{data$Parameters$merge_replicates}.
 #' @param method Character string specifying the correlation method. One of:
 #'   \itemize{
 #'     \item \code{"pearson"}: Pearson product-moment correlation (default)
@@ -69,18 +69,23 @@
 #'     \item{\code{iqr_values}}{Data frame of IQR values for all features/samples}
 #'     \item{\code{parameters}}{List of all function parameters used}
 #'     \item{\code{summary_stats}}{Summary statistics of the analysis}
+#'     \item{\code{hclust_object}}{Hierarchical clustering object (hierarchical plots only)}
+#'     \item{\code{distance_matrix}}{Distance matrix used for clustering (hierarchical plots only)}
 #'   }
 #'
 #' @details
 #' The function performs the following steps:
 #' \enumerate{
 #'   \item Validates input parameters and data structure
-#'   \item Automatically selects between \code{data_scaledPCA_varFiltered} and \code{data_scaledPCA_merged} based on \code{auto_merge_replicates} parameter
+#'   \item Automatically selects between \code{data_scaledNONPLS_varFiltered} and \code{data_scaledNONPLS_merged} based on \code{merge_replicates} parameter
 #'   \item Calculates interquartile ranges (IQR) to identify most variable features/samples
 #'   \item Selects top N most variable features/samples based on IQR
 #'   \item For correlation plots: computes correlation matrix with p-values and applies significance masking
 #'   \item For hierarchical plots: uses raw filtered data with clustering
 #'   \item Generates publication-ready heatmap with customizable aesthetics
+#' For hierarchical plots, the dendrogram is created using base R graphics and
+#' recorded using \code{recordPlot()}. To display the plot again, use
+#' \code{replayPlot(result$plot)} where \code{result} is the returned object.
 #' }
 #'
 #' For correlation plots, non-significant correlations (p >= significance_threshold)
@@ -111,10 +116,19 @@
 #'   significance_threshold = 0.01,
 #'   color_palette = c("darkblue", "grey90", "darkred")
 #' )
+#'
+#' # To redisplay a hierarchical plot:
+#' result <- plot_CorrelationHeatmap(
+#'   data = preprocessed_data,
+#'   plot_type = "hierarchical"
+#' )
+#' # Replay the plot
+#' replayPlot(result$plot)
 #' }
 #'
 #' @seealso
-#' \code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}}
+#' \code{\link[stats]{cor}}, \code{\link[Hmisc]{rcorr}}, \code{\link[pheatmap]{pheatmap}},
+#' \code{\link[stats]{hclust}}, \code{\link[stats]{dist}}, \code{\link[grDevices]{recordPlot}}
 #'
 #' @author John Lennon L. Calorio
 #'
@@ -146,26 +160,26 @@
 #' @export
 plot_CorrelationHeatmap <- function(
     data,
-    method = "pearson",
-    plot_top_n = 1000,
-    plot_what = "Features",
-    plot_type = "correlation",
-    show_rownames = TRUE,
-    show_colnames = TRUE,
+    method                   = "pearson",
+    plot_top_n               = 1000,
+    plot_what                = "Features",
+    plot_type                = "correlation",
+    show_rownames            = TRUE,
+    show_colnames            = TRUE,
     clustering_distance_rows = "euclidean",
     clustering_distance_cols = "euclidean",
-    clustering_method = "ward.D",
-    significance_threshold = 0.05,
-    color_palette = c("blue", "white", "red"),
-    fontsize_main = 12,
-    fontsize_labels = 8
+    clustering_method        = "ward.D",
+    significance_threshold   = 0.05,
+    color_palette            = c("blue", "white", "red"),
+    fontsize_main            = 12,
+    fontsize_labels          = 8
 ) {
 
   # Helper function for input validation
   validate_inputs_corrheatmap <- function() {
     # Check required packages
     required_packages <- c("stats", "Hmisc", "pheatmap", "grDevices", "grid")
-    missing_packages <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+    missing_packages  <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
     if (length(missing_packages) > 0) {
       stop(sprintf("Required packages missing: %s. Please install them.",
                    paste(missing_packages, collapse = ", ")))
@@ -176,27 +190,27 @@ plot_CorrelationHeatmap <- function(
       stop("'data' must be a list object")
     }
 
-    # Determine which data component to use based on auto_merge_replicates parameter
+    # Determine which data component to use based on merge_replicates parameter
     use_merged_data <- FALSE
     if ("Parameters" %in% names(data) &&
         is.list(data$Parameters) &&
-        "auto_merge_replicates" %in% names(data$Parameters)) {
-      use_merged_data <- isTRUE(data$Parameters$auto_merge_replicates)
+        "merge_replicates" %in% names(data$Parameters)) {
+      use_merged_data <- isTRUE(data$Parameters$merge_replicates)
     }
 
     # Check for appropriate data component
     if (use_merged_data) {
-      if (!"data_scaledPCA_merged" %in% names(data)) {
-        stop("'data' must contain 'data_scaledPCA_merged' component when auto_merge_replicates is TRUE")
+      if (!"data_scaledNONPLS_merged" %in% names(data)) {
+        stop("'data' must contain 'data_scaledNONPLS_merged' component when merge_replicates is TRUE")
       }
-      data_component_name <- "data_scaledPCA_merged"
-      data_matrix <- data$data_scaledPCA_merged
+      data_component_name <- "data_scaledNONPLS_merged"
+      data_matrix         <- data$data_scaledNONPLS_merged
     } else {
-      if (!"data_scaledPCA_varFiltered" %in% names(data)) {
-        stop("'data' must contain 'data_scaledPCA_varFiltered' component when auto_merge_replicates is FALSE or not specified")
+      if (!"data_scaledNONPLS_varFiltered" %in% names(data)) {
+        stop("'data' must contain 'data_scaledNONPLS_varFiltered' component when merge_replicates is FALSE or not specified")
       }
-      data_component_name <- "data_scaledPCA_varFiltered"
-      data_matrix <- data$data_scaledPCA_varFiltered
+      data_component_name <- "data_scaledNONPLS_varFiltered"
+      data_matrix         <- data$data_scaledNONPLS_varFiltered
     }
 
     if (!is.matrix(data_matrix) && !is.data.frame(data_matrix)) {
@@ -274,10 +288,10 @@ plot_CorrelationHeatmap <- function(
     }
 
     # Return both the validated plot_top_n and the determined data info
-    return(list(plot_top_n = plot_top_n,
-                data_matrix = data_matrix,
+    return(list(plot_top_n          = plot_top_n,
+                data_matrix         = data_matrix,
                 data_component_name = data_component_name,
-                use_merged_data = use_merged_data))
+                use_merged_data     = use_merged_data))
   }
 
   # Helper function to prepare data matrix
@@ -287,16 +301,17 @@ plot_CorrelationHeatmap <- function(
       data_matrix <- as.matrix(data_matrix)
     }
 
-    # Remove rows/columns with all missing values
     if (plot_what == "Samples") {
-      data_matrix <- t(data_matrix)
-      # Remove samples (rows) with all NA
-      complete_samples <- rowSums(!is.na(data_matrix)) > 0
-      if (!any(complete_samples)) {
+      # Transpose so samples become columns (we'll correlate/cluster samples)
+      data_matrix   <- t(data_matrix)
+      # Remove samples (now columns) with all NA
+      complete_cols <- colSums(!is.na(data_matrix)) > 0
+      if (!any(complete_cols)) {
         stop("All samples contain only missing values")
       }
-      data_matrix <- data_matrix[complete_samples, , drop = FALSE]
+      data_matrix <- data_matrix[, complete_cols, drop = FALSE]
     } else {
+      # For features, keep as is (features are already columns)
       # Remove features (columns) with all NA
       complete_features <- colSums(!is.na(data_matrix)) > 0
       if (!any(complete_features)) {
@@ -322,11 +337,11 @@ plot_CorrelationHeatmap <- function(
     }
 
     iqr_df <- data.frame(
-      Feature = names(iqr_values)[valid_iqr],
-      IQR = iqr_values[valid_iqr],
+      Feature          = names(iqr_values)[valid_iqr],
+      IQR              = iqr_values[valid_iqr],
       stringsAsFactors = FALSE
     )
-    iqr_df <- iqr_df[order(iqr_df$IQR, decreasing = TRUE), ]
+    iqr_df           <- iqr_df[order(iqr_df$IQR, decreasing = TRUE), ]
     rownames(iqr_df) <- iqr_df$Feature
 
     return(iqr_df)
@@ -353,12 +368,12 @@ plot_CorrelationHeatmap <- function(
 
     # Handle case where p-values might be NULL (single variable case)
     if (is.null(p_values)) {
-      p_values <- matrix(0, nrow = nrow(cor_matrix), ncol = ncol(cor_matrix))
+      p_values           <- matrix(0, nrow = nrow(cor_matrix), ncol = ncol(cor_matrix))
       dimnames(p_values) <- dimnames(cor_matrix)
     }
 
     # Create masked correlation matrix
-    cor_matrix_masked <- cor_matrix
+    cor_matrix_masked                                     <- cor_matrix
     cor_matrix_masked[p_values >= significance_threshold] <- 0
 
     # Create color palette
@@ -371,19 +386,19 @@ plot_CorrelationHeatmap <- function(
     plot_obj <- tryCatch({
       pheatmap::pheatmap(
         cor_matrix_masked,
-        color = my_palette,
-        breaks = seq(-1, 1, length.out = 51),
-        display_numbers = FALSE,
-        show_rownames = if (plot_what == "Samples") TRUE else clustering_params$show_rownames,
-        show_colnames = if (plot_what == "Samples") TRUE else clustering_params$show_colnames,
-        fontsize = font_params$fontsize_main,
-        fontsize_row = font_params$fontsize_labels,
-        fontsize_col = font_params$fontsize_labels,
+        color                    = my_palette,
+        breaks                   = seq(-1, 1, length.out = 51),
+        display_numbers          = FALSE,
+        show_rownames            = if (plot_what == "Samples") TRUE else clustering_params$show_rownames,
+        show_colnames            = if (plot_what == "Samples") TRUE else clustering_params$show_colnames,
+        fontsize                 = font_params$fontsize_main,
+        fontsize_row             = font_params$fontsize_labels,
+        fontsize_col             = font_params$fontsize_labels,
         clustering_distance_rows = clustering_params$distance_rows,
         clustering_distance_cols = clustering_params$distance_cols,
-        clustering_method = clustering_params$method,
-        main = sprintf("Correlation Heatmap of %s (p >= %.3f shown as neutral)",
-                       plot_what, significance_threshold),
+        clustering_method        = clustering_params$method,
+        main                     = sprintf("Correlation Heatmap of %s (p >= %.3f shown as neutral)",
+                                           plot_what, significance_threshold),
         silent = TRUE
       )
     }, error = function(e) {
@@ -391,10 +406,10 @@ plot_CorrelationHeatmap <- function(
     })
 
     return(list(
-      plot = plot_obj,
+      plot               = plot_obj,
       correlation_matrix = cor_matrix,
-      p_values = p_values,
-      masked_matrix = cor_matrix_masked
+      p_values           = p_values,
+      masked_matrix      = cor_matrix_masked
     ))
   }
 
@@ -402,42 +417,63 @@ plot_CorrelationHeatmap <- function(
   create_hierarchical_plot <- function(filtered_df, color_palette, clustering_params,
                                        font_params, plot_what) {
 
-    # Create color palette for raw values
-    my_palette <- grDevices::colorRampPalette(color_palette)(50)
+    # Transpose if needed for proper clustering orientation
+    if (plot_what == "Samples") {
+      data_to_cluster <- filtered_df
+    }
 
-    # Clear graphics device
-    grid::grid.newpage()
+    data_to_cluster <- t(filtered_df)
 
-    # Create plot with error handling
-    plot_obj <- tryCatch({
-      pheatmap::pheatmap(
-        filtered_df,
-        color = my_palette,
-        show_rownames = if (plot_what == "Samples") TRUE else clustering_params$show_rownames,
-        show_colnames = if (plot_what == "Samples") TRUE else clustering_params$show_colnames,
-        fontsize = font_params$fontsize_main,
-        fontsize_row = font_params$fontsize_labels,
-        fontsize_col = font_params$fontsize_labels,
-        clustering_distance_rows = clustering_params$distance_rows,
-        clustering_distance_cols = clustering_params$distance_cols,
-        clustering_method = clustering_params$method,
-        main = sprintf("Hierarchical Clustering Heatmap of %s", plot_what),
-        silent = TRUE
-      )
+    # Calculate distance matrix
+    tryCatch({
+      dist_matrix <- stats::dist(data_to_cluster, method = clustering_params$distance_rows)
     }, error = function(e) {
-      stop(sprintf("Error creating hierarchical heatmap: %s", e$message))
+      stop(sprintf("Error calculating distance matrix: %s", e$message))
     })
 
-    return(list(plot = plot_obj))
+    # Perform hierarchical clustering
+    tryCatch({
+      hc <- stats::hclust(dist_matrix, method = clustering_params$method)
+    }, error = function(e) {
+      stop(sprintf("Error performing hierarchical clustering: %s", e$message))
+    })
+
+    # Create dendrogram plot and record it
+    plot_obj <- tryCatch({
+      # Set up plot parameters
+      par(mar = c(5, 4, 4, 2) + 0.1)
+
+      # Plot dendrogram
+      plot(hc,
+           main     = sprintf("Hierarchical Clustering Dendrogram of %s", plot_what),
+           xlab     = ifelse(plot_what == "Samples", "Samples", "Features"),
+           ylab     = sprintf("Distance (%s)", clustering_params$distance_rows),
+           sub      = sprintf("Clustering method: %s", clustering_params$method),
+           cex      = font_params$fontsize_labels / 12,  # Scale based on label fontsize
+           cex.main = font_params$fontsize_main / 12,
+           cex.lab  = font_params$fontsize_labels / 10,
+           hang     = -1)  # Align labels at bottom
+
+      # Record the plot so it can be replotted later
+      recorded_plot <- recordPlot()
+
+      recorded_plot
+    }, error = function(e) {
+      stop(sprintf("Error creating dendrogram plot: %s", e$message))
+    })
+
+    return(list(
+      plot            = plot_obj,
+      hclust_object   = hc,
+      distance_matrix = as.matrix(dist_matrix)
+    ))
   }
 
-  # Main function execution starts here
-
   # Validate all inputs and get data matrix info
-  validation_results <- validate_inputs_corrheatmap()
-  plot_top_n <- validation_results$plot_top_n
+  validation_results   <- validate_inputs_corrheatmap()
+  plot_top_n           <- validation_results$plot_top_n
   selected_data_matrix <- validation_results$data_matrix
-  data_component_name <- validation_results$data_component_name
+  data_component_name  <- validation_results$data_component_name
 
   # Prepare data matrix
   data_matrix <- prepare_data_matrix_corrheatmap(selected_data_matrix, plot_what)
@@ -446,8 +482,8 @@ plot_CorrelationHeatmap <- function(
   iqr_results <- calculate_iqr_values(data_matrix)
 
   # Select top features
-  n_available <- nrow(iqr_results)
-  n_select <- min(plot_top_n, n_available)
+  n_available  <- nrow(iqr_results)
+  n_select     <- min(plot_top_n, n_available)
   top_features <- iqr_results$Feature[1:n_select]
 
   # Filter data to top features
@@ -457,13 +493,13 @@ plot_CorrelationHeatmap <- function(
   clustering_params <- list(
     distance_rows = clustering_distance_rows,
     distance_cols = clustering_distance_cols,
-    method = clustering_method,
+    method        = clustering_method,
     show_rownames = show_rownames,
     show_colnames = show_colnames
   )
 
   font_params <- list(
-    fontsize_main = fontsize_main,
+    fontsize_main   = fontsize_main,
     fontsize_labels = fontsize_labels
   )
 
@@ -481,50 +517,53 @@ plot_CorrelationHeatmap <- function(
 
   # Compile summary statistics
   summary_stats <- list(
-    n_original_features = ifelse(plot_what == "Samples", nrow(selected_data_matrix),
-                                 ncol(selected_data_matrix)),
-    n_selected_features = n_select,
-    n_samples = ifelse(plot_what == "Samples", ncol(filtered_df), nrow(filtered_df)),
+    n_original_features  = ifelse(plot_what == "Samples", nrow(selected_data_matrix),
+                                  ncol(selected_data_matrix)),
+    n_selected_features  = n_select,
+    n_samples            = ifelse(plot_what == "Samples", ncol(filtered_df), nrow(filtered_df)),
     missing_data_percent = round(100 * sum(is.na(filtered_df)) / (nrow(filtered_df) * ncol(filtered_df)), 2),
-    iqr_range = c(min = min(iqr_results$IQR), max = max(iqr_results$IQR)),
-    data_source = data_component_name,
-    auto_merge_replicates = validation_results$use_merged_data
+    iqr_range            = c(min = min(iqr_results$IQR), max = max(iqr_results$IQR)),
+    data_source          = data_component_name,
+    merge_replicates     = validation_results$use_merged_data
   )
 
   if (plot_type == "correlation") {
-    n_comparisons <- ncol(filtered_df) * (ncol(filtered_df) - 1) / 2
-    n_significant <- sum(plot_results$p_values[upper.tri(plot_results$p_values)] < significance_threshold, na.rm = TRUE)
-    summary_stats$n_correlations_tested <- n_comparisons
+    n_comparisons                            <- ncol(filtered_df) * (ncol(filtered_df) - 1) / 2
+    n_significant                            <- sum(plot_results$p_values[upper.tri(plot_results$p_values)] < significance_threshold, na.rm = TRUE)
+    summary_stats$n_correlations_tested      <- n_comparisons
     summary_stats$n_significant_correlations <- n_significant
-    summary_stats$percent_significant <- round(100 * n_significant / n_comparisons, 2)
+    summary_stats$percent_significant        <- round(100 * n_significant / n_comparisons, 2)
   }
 
   # Compile results
   results <- list(
-    plot = plot_results$plot,
+    plot          = plot_results$plot,
     filtered_data = as.data.frame(filtered_df),
-    top_features = top_features,
-    iqr_values = iqr_results,
-    parameters = list(
-      method = method,
-      plot_top_n = plot_top_n,
-      plot_what = plot_what,
-      plot_type = plot_type,
-      significance_threshold = significance_threshold,
+    top_features  = top_features,
+    iqr_values    = iqr_results,
+    parameters    = list(
+      method                   = method,
+      plot_top_n               = plot_top_n,
+      plot_what                = plot_what,
+      plot_type                = plot_type,
+      significance_threshold   = significance_threshold,
       clustering_distance_rows = clustering_distance_rows,
       clustering_distance_cols = clustering_distance_cols,
-      clustering_method = clustering_method,
-      color_palette = color_palette
+      clustering_method        = clustering_method,
+      color_palette            = color_palette
     ),
-    summary_stats = summary_stats,
+    summary_stats   = summary_stats,
     function_origin = "plot_CorrelationHeatmap"
   )
 
   # Add plot-specific results
   if (plot_type == "correlation") {
     results$correlation_matrix <- as.data.frame(plot_results$correlation_matrix)
-    results$p_values <- as.data.frame(plot_results$p_values)
+    results$p_values           <- as.data.frame(plot_results$p_values)
     results$masked_correlation_matrix <- as.data.frame(plot_results$masked_matrix)
+  } else if (plot_type == "hierarchical") {
+    results$hclust_object   <- plot_results$hclust_object
+    results$distance_matrix <- as.data.frame(plot_results$distance_matrix)
   }
 
   return(results)

@@ -36,6 +36,7 @@
 #'   results based on the adjusted p-value (default: \code{TRUE}).
 #' @param exclude_qc A logical value. If \code{TRUE}, removes rows where the
 #'   value in \code{group_cat1_col} is "QC" (default: \code{TRUE}).
+#' @param verbose A logical value. If \code{FALSE} (default), does not output which feature is being analyzed.
 #'
 #' @return A list containing the results of the analysis. The list includes:
 #'   \describe{
@@ -99,7 +100,8 @@ perform_LMEM <- function(
     response_col = "Response",
     adj_p = "BH",
     stars = TRUE,
-    exclude_qc = TRUE
+    exclude_qc = TRUE,
+    verbose = FALSE
 ) {
 
   # Load required packages silently
@@ -202,7 +204,7 @@ perform_LMEM <- function(
   })
 
   for (met_name in featMet_names) {
-    message(paste("Processing metabolite:", met_name))
+    if (verbose) message(paste("Processing metabolite:", met_name))
 
     # Initialize variables for this iteration
     df_transformed <- NULL
@@ -403,7 +405,13 @@ perform_LMEM <- function(
         }
 
         # Fit the model using lmerTest for p-values
-        current_model <- lmerTest::lmer(model_formula_parsed, data = df_transformed, REML = TRUE)
+        if (verbose) {
+          current_model <- lmerTest::lmer(model_formula_parsed, data = df_transformed, REML = TRUE)
+        } else {
+          current_model <- suppressMessages(suppressWarnings(
+            lmerTest::lmer(model_formula_parsed, data = df_transformed, REML = TRUE)
+          ))
+        }
 
         # Check for convergence warnings
         if (length(current_model@optinfo$conv$lme4$messages) > 0) {
@@ -616,6 +624,7 @@ perform_LMEM <- function(
   message(paste("Successful models:", successful_models, "out of", length(featMet_names)))
   message(paste("Success rate:", round(successful_models / length(featMet_names) * 100, 2), "%"))
 
+  class(all_results) <- c("perform_LMEM", "list")
   return(all_results)
 }
 
@@ -702,4 +711,46 @@ plot_lmer_diagnostics <- function(lmer_model) {
     residuals_plot = residuals_plot,
     qq_plot = qq_plot
   ))
+}
+
+# S3 Methods
+#' @export
+print.perform_LMEM <- function(x, ...) {
+  cat("=== Linear Mixed-Effects Models ===\n")
+  cat("Total Features:  ", x$Processing_Summary$Total_FeaturesMetabolites, "\n")
+  cat("Successful:      ", x$Processing_Summary$Successful_Models, "\n")
+  cat("Success Rate:    ", x$Processing_Summary$Success_Rate, "%\n")
+  invisible(x)
+}
+
+#' @export
+summary.perform_LMEM <- function(object, ...) {
+  # Get top significant effects
+  top_sig <- head(object$Combined_Fixed_Effects_Summary[
+    order(object$Combined_Fixed_Effects_Summary$adj_p),
+    c("Metabolite_Name", "Effect", "Estimate", "adj_p", "Stars")], 10)
+
+  ans <- list(
+    summary = object$Processing_Summary,
+    top_effects = top_sig
+  )
+  class(ans) <- "summary.perform_LMEM"
+  return(ans)
+}
+
+#' @export
+print.summary.perform_LMEM <- function(x, ...) {
+  cat("---------------------------------------\n")
+  cat("LMEM Analysis Summary\n")
+  cat("---------------------------------------\n")
+  cat("Models Converged:", x$summary$Successful_Models, "\n")
+  cat("Models Failed:   ", x$summary$Failed_Models, "\n")
+
+  cat("\n-- Top Significant Fixed Effects (Adjusted P) --\n")
+  if (nrow(x$top_effects) > 0) {
+    print(x$top_effects, row.names=FALSE)
+  } else {
+    cat("No significant effects found.\n")
+  }
+  invisible(x)
 }

@@ -1,117 +1,38 @@
 #' Perform Comprehensive Data Quality Check for Metabolomics Data
 #'
 #' @description
-#' This function imports and validates metabolomics data from Excel, CSV, TSV, or text files,
-#' performing comprehensive quality controls to ensure data integrity and compatibility with
-#' downstream analysis functions. The function validates data structure, checks for required
-#' metadata rows, ensures uniqueness constraints, cleans special characters from identifiers,
-#' and prepares data for preprocessing pipelines.
+#' This function imports and validates metabolomics data, performing comprehensive
+#' quality controls with strict structural requirements.
 #'
 #' Key validation checks include:
 #' \itemize{
-#'   \item Presence of required metadata rows (Sample, SubjectID, Replicate, Group, Batch, Injection, Normalization, Response)
-#'   \item Uniqueness of sample names, injection sequences, and feature/metabolite identifiers
-#'   \item Proper QC sample annotation (empty values in SubjectID, Replicate, Normalization, Response for QC samples)
-#'   \item Numeric validation of feature/metabolite data
-#'   \item Character cleaning and standardization of identifiers
-#'   \item Optional merging of duplicate samples by mean or median
+#'   \item Strict Metadata Order: Row 1=Sample, Row 2=Group, Row 3=Batch, Row 4=Injection.
+#'   \item Variable Metadata: Allows any number of rows between Injection and Response.
+#'   \item Metadata Uniqueness: Ensures no duplicate metadata row names.
+#'   \item Numeric validation of all feature/metabolite data.
+#'   \item Merging of duplicate samples by mean or median.
 #' }
 #'
-#' @param file_location Character string specifying the file path. If NULL, an interactive
-#'   file selection dialog will open. Supported formats: .xlsx, .csv, .tsv, .txt
-#' @param sheet_name Character string specifying the Excel worksheet name. Ignored for
-#'   non-Excel files. If NULL for Excel files, the first sheet is used.
-#' @param skip_rows Integer specifying the number of rows to skip when reading the file.
-#'   Default is 0.
-#' @param separator Character string specifying the field separator for delimited files.
-#' Common values: "," (comma), "\\t" (tab). Default is ",". Ignored for Excel files.
-#' @param validate_qc Logical indicating whether to enforce QC validation rules.
-#'   Default is TRUE.
-#' @param allow_missing_optional Logical indicating whether to allow missing values in
-#'   optional metadata rows (SubjectID, Replicate, Normalization, Response). Default is TRUE.
-#' @param clean_names Logical indicating whether to clean special characters from names.
-#'   Default is TRUE.
-#' @param merge_duplicate_samples_by Character string specifying how to handle duplicate
-#'   sample names. Options: NULL (default, throws error on duplicates), "mean" (average
-#'   duplicate samples), "median" (take median of duplicate samples). If no duplicates exist,
-#'   this parameter is ignored. When merging, metadata from the first occurrence is retained.
+#' @param file_location Character string specifying the file path.
+#' @param sheet_name Character string specifying the Excel worksheet name.
+#' @param skip_rows Integer specifying the number of rows to skip. Default is 0.
+#' @param separator Character string specifying the field separator. Default is ",".
+#' @param validate_qc Logical indicating whether to enforce QC validation rules. Default is TRUE.
+#' @param allow_missing_optional Logical (currently unused but kept for compatibility). Default is TRUE.
+#' @param clean_names Logical indicating whether to clean special characters. Default is TRUE.
+#' @param merge_duplicate_samples_by Character string: NULL, "mean", or "median". Default is NULL.
 #' @param verbose Logical indicating whether to display progress messages. Default is TRUE.
 #'
 #' @return A list containing:
-#'   \item{raw_data}{Data frame with the original data as loaded from the file}
-#'   \item{quality_checked_data}{Data frame with validated and cleaned data, sorted by injection sequence}
-#'   \item{metadata_summary}{Summary statistics of the metadata}
+#'   \item{raw_data}{Original data as loaded}
+#'   \item{metadata_summary}{Summary statistics (Groups as dataframe)}
 #'   \item{validation_report}{Detailed validation results}
 #'   \item{file_info}{Information about the source file}
-#'   \item{processing_log}{Log of all processing steps performed}
-#'
-#' @details
-#' The input data must follow a specific structure:
-#' \itemize{
-#'   \item Row 1: "Sample" - Unique sample identifiers (no spaces recommended)
-#'   \item Row 2: "SubjectID" - Numeric subject identifiers (can be non-unique)
-#'   \item Row 3: "Replicate" - Replicate identifiers (can be non-unique)
-#'   \item Row 4: "Group" - Group assignments including QC samples
-#'   \item Row 5: "Group2" - 2nd Group assignments including QC samples (this another 'Group' is reserved for whenever another group is available)
-#'   \item Row 6: "Batch" - Batch numbers
-#'   \item Row 7: "Injection" - Unique injection sequence numbers
-#'   \item Row 8: "Normalization" - Concentration markers (e.g., osmolality)
-#'   \item Row 9: "Response" - Response variable values
-#'   \item Rows 10+: Feature/metabolite data (e.g., m/z@retention_time format)
-#' }
-#'
-#' Missing values should be left blank or encoded as 0. QC samples in the Group row
-#' must have empty values in SubjectID, Replicate, Normalization, and Response rows.
-#'
-#' When \code{merge_duplicate_samples_by} is set to "mean" or "median", duplicate samples
-#' are identified by their Sample name and merged accordingly. The metadata (SubjectID,
-#' Replicate, Group, Group2, Batch, Normalization, Response) from the first occurrence
-#' is retained, while the Injection value is set to the minimum injection number among
-#' duplicates. Feature/metabolite values are aggregated using the specified method.
-#'
-#' @examples
-#' \dontrun{
-#' # Basic usage with file selection dialog
-#' result <- perform_DataQualityCheck()
-#'
-#' # Specify file location directly
-#' result <- perform_DataQualityCheck(
-#'   file_location = "path/to/metabolomics_data.xlsx",
-#'   sheet_name = "Sheet1"
-#' )
-#'
-#' # CSV file with custom separator
-#' result <- perform_DataQualityCheck(
-#'   file_location = "path/to/data.csv",
-#'   separator = ";",
-#'   skip_rows = 1
-#' )
-#'
-#' # Merge duplicate samples by taking their mean
-#' result <- perform_DataQualityCheck(
-#'   file_location = "path/to/data.xlsx",
-#'   merge_duplicate_samples_by = "mean"
-#' )
-#'
-#' # Merge duplicate samples by taking their median
-#' result <- perform_DataQualityCheck(
-#'   file_location = "path/to/data.xlsx",
-#'   merge_duplicate_samples_by = "median"
-#' )
-#'
-#' # Access results
-#' clean_data <- result$raw_data
-#' validation_summary <- result$validation_report
-#' }
-#'
-#' @author John Lennon L. Calorio
-#'
-#' @seealso
-#' \code{\link{perform_PreprocessingPeakData}} for the next step in the analysis pipeline
+#'   \item{processing_log}{Log of all processing steps including execution time}
 #'
 #' @export
-#' @importFrom readxl read_excel
-#' @importFrom dplyr mutate arrange select all_of group_by summarise across
+#' @importFrom readxl read_excel excel_sheets
+#' @importFrom dplyr mutate arrange select all_of group_by summarise across first left_join ungroup n
 #' @importFrom stringr str_replace_all str_trim
 #' @importFrom utils read.csv read.delim
 #' @importFrom tools file_ext
@@ -128,64 +49,103 @@ perform_DataQualityCheck <- function(
     verbose = TRUE
 ) {
 
-  # Validate merge_duplicate_samples_by parameter
-  if (!is.null(merge_duplicate_samples_by)) {
-    if (!merge_duplicate_samples_by %in% c("mean", "median")) {
-      stop("merge_duplicate_samples_by must be NULL, 'mean', or 'median'", call. = FALSE)
-    }
-  }
+  # Record start time
+  start_time <- Sys.time()
 
-  # Initialize results object with processing metadata
-  results <- initialize_results_object(file_location, sheet_name, validate_qc,
-                                       allow_missing_optional, clean_names,
-                                       merge_duplicate_samples_by)
+  # Validate parameters upfront
+  validate_parameters(merge_duplicate_samples_by, file_location)
+
+  # Initialize results object (Updated structure)
+  results <- initialize_results_object(
+    file_location, sheet_name, skip_rows, separator,
+    validate_qc, allow_missing_optional, clean_names,
+    merge_duplicate_samples_by, start_time
+  )
 
   tryCatch({
     # Step 1: Load and validate file
-    if (verbose) message("Step 1/7: Reading and validating file...")
+    if (verbose) message("Step 1/9: Reading and validating file...")
     original_data <- load_and_validate_file(file_location, sheet_name, skip_rows,
                                             separator, verbose)
-    results$raw_data <- original_data  # Store original data
+    results$raw_data <- original_data
+    file_location <- attr(original_data, "file_location") # Get path if interactively chosen
     results$file_info <- extract_file_info(file_location, original_data)
 
-    # Create working copy for quality checking
-    raw_data <- original_data
+    # Create working copy
+    working_data <- original_data
 
     # Step 2: Clean names if requested
     if (clean_names) {
-      if (verbose) message("Step 2/7: Cleaning special characters in identifiers...")
-      raw_data <- clean_data_identifiers(raw_data, verbose)
+      if (verbose) message("Step 2/9: Cleaning special characters in identifiers...")
+      working_data <- clean_data_identifiers(working_data, verbose)
     } else {
-      if (verbose) message("Step 2/7: Skipping name cleaning (clean_names = FALSE)")
+      if (verbose) message("Step 2/9: Skipping name cleaning (clean_names = FALSE)")
     }
 
-    # Step 3: Validate required structure
-    if (verbose) message("Step 3/7: Validating data structure...")
-    structure_validation <- validate_data_structure(raw_data, allow_missing_optional)
-    results$validation_report$structure <- structure_validation
+    # Step 3: Validate strict structure and find metadata rows
+    if (verbose) message("Step 3/9: Validating strict data structure and locating metadata rows...")
+    structure_info <- validate_and_locate_metadata(working_data)
+    results$validation_report$structure <- structure_info
 
-    # Step 4: Check for duplicates (or merge them if requested)
-    if (verbose) message("Step 4/7: Checking for duplicate identifiers...")
-    raw_data <- transpose_and_prepare_data(raw_data)
-    duplicate_validation <- validate_uniqueness_constraints(raw_data, merge_duplicate_samples_by, verbose)
+    # Step 4: Transpose data for processing (samples as rows)
+    if (verbose) message("Step 4/9: Transposing data for processing...")
+    processed_data <- transpose_for_processing(working_data)
+
+    # Step 5: Identify Metadata vs Feature columns (CRITICAL STEP)
+    if (verbose) message("Step 5/9: Identifying metadata and feature columns...")
+    all_processed_colnames <- colnames(processed_data)
+
+    # Define metadata indices based on structure info
+    # Includes 1:Sample, 2:Group, 3:Batch, 4:Injection, ... :Response
+    metadata_indices <- 1:(structure_info$response_row)
+    feature_indices <- (structure_info$feature_start_row):nrow(working_data)
+
+    # Sanity check
+    if (any(metadata_indices %in% feature_indices)) {
+      stop("Internal error: Metadata and feature rows overlap.", call. = FALSE)
+    }
+
+    # These are the *actual* (mangled) column names in processed_data
+    metadata_cols_processed <- all_processed_colnames[metadata_indices]
+    feature_cols_processed <- all_processed_colnames[feature_indices]
+
+    results$validation_report$column_identification <- list(
+      total_metadata_cols = length(metadata_cols_processed),
+      total_feature_cols = length(feature_cols_processed),
+      metadata_colnames = metadata_cols_processed,
+      feature_colnames = feature_cols_processed
+    )
+
+    # Step 6: Validate uniqueness constraints
+    if (verbose) message("Step 6/9: Checking for duplicate identifiers...")
+    duplicate_validation <- validate_uniqueness_constraints(
+      processed_data, merge_duplicate_samples_by, feature_cols_processed, verbose
+    )
     results$validation_report$duplicates <- duplicate_validation
 
-    # Step 5: Merge duplicate samples if requested
+    # Step 7: Merge duplicate samples if requested
     if (!is.null(merge_duplicate_samples_by)) {
-      sample_names <- as.character(raw_data$Sample)
+      sample_names <- as.character(processed_data$Sample)
       sample_duplicates <- find_duplicates(sample_names)
 
       if (length(sample_duplicates) > 0) {
-        if (verbose) message("Step 5/7: Merging duplicate samples by ", merge_duplicate_samples_by, "...")
-        raw_data <- merge_duplicate_samples(raw_data, merge_duplicate_samples_by, verbose)
+        if (verbose) message("Step 7/9: Merging duplicate samples by ", merge_duplicate_samples_by)
+
+        processed_data <- merge_duplicate_samples(
+          processed_data,
+          merge_duplicate_samples_by,
+          metadata_cols_processed,
+          feature_cols_processed,
+          verbose
+        )
+
         results$validation_report$merge_info <- list(
           method = merge_duplicate_samples_by,
           duplicates_merged = sample_duplicates,
-          samples_before_merge = nrow(raw_data) + length(sample_duplicates),
-          samples_after_merge = nrow(raw_data)
+          samples_after_merge = nrow(processed_data)
         )
       } else {
-        if (verbose) message("Step 5/7: No duplicate samples found, skipping merge...")
+        if (verbose) message("Step 7/9: No duplicate samples found, skipping merge...")
         results$validation_report$merge_info <- list(
           method = merge_duplicate_samples_by,
           duplicates_merged = character(0),
@@ -193,27 +153,41 @@ perform_DataQualityCheck <- function(
         )
       }
     } else {
-      if (verbose) message("Step 5/7: Skipping duplicate merge (merge_duplicate_samples_by = NULL)")
+      if (verbose) message("Step 7/9: Skipping duplicate merge (merge_duplicate_samples_by = NULL)")
     }
 
-    # Step 6: Validate QC rules if requested
+    # Step 8: Validate QC rules if requested
     if (validate_qc) {
-      if (verbose) message("Step 6/7: Validating QC sample rules...")
-      qc_validation <- validate_qc_rules(raw_data)
+      if (verbose) message("Step 8/9: Validating QC sample rules...")
+      qc_validation <- validate_qc_rules(processed_data)
       results$validation_report$qc_rules <- qc_validation
     } else {
-      if (verbose) message("Step 6/7: Skipping QC validation (validate_qc = FALSE)")
+      if (verbose) message("Step 8/9: Skipping QC validation (validate_qc = FALSE)")
     }
 
-    # Step 7: Validate numeric data and finalize
-    if (verbose) message("Step 7/7: Validating numeric data and finalizing...")
-    raw_data <- sort_by_injection_sequence(raw_data)
-    numeric_validation <- validate_numeric_features(raw_data)
+    # Step 9: Validate numeric data, sort, and finalize
+    if (verbose) message("Step 9/9: Validating numeric data and finalizing")
+
+    # Sort by injection first
+    processed_data <- sort_by_injection_sequence(processed_data)
+
+    # Use numeric validator
+    numeric_validation <- validate_numeric_features(
+      processed_data, feature_cols_processed
+    )
     results$validation_report$numeric_data <- numeric_validation
 
-    # Finalize results
-    results$quality_checked_data <- finalize_data_structure(raw_data)
-    results$metadata_summary <- generate_metadata_summary(results$quality_checked_data)
+    # Finalize data (applies numeric conversion)
+    # We create a temporary object for summary generation, but we DO NOT return it
+    final_data_for_summary <- finalize_data_structure(
+      processed_data, feature_cols_processed
+    )
+
+    # Generate summary
+    results$metadata_summary <- generate_metadata_summary(
+      final_data_for_summary, metadata_cols_processed, feature_cols_processed
+    )
+
     results$processing_log$completion_time <- Sys.time()
     results$processing_log$success <- TRUE
 
@@ -224,8 +198,24 @@ perform_DataQualityCheck <- function(
     results$processing_log$success <- FALSE
     results$processing_log$completion_time <- Sys.time()
 
+    # Calculate final time even on error
+    end_time <- results$processing_log$completion_time
+    start_time <- results$processing_log$start_time
+    if (!is.null(end_time) && !is.null(start_time)) {
+      results$processing_log$TotalProcessingTime_in_seconds <- as.numeric(difftime(end_time, start_time, units = "secs"))
+    }
+
     stop("Data quality check failed: ", e$message, call. = FALSE)
   })
+
+  # Calculate final processing time and put it INSIDE processing_log
+  end_time <- results$processing_log$completion_time
+  start_time <- results$processing_log$start_time
+  if (!is.null(end_time) && !is.null(start_time)) {
+    results$processing_log$TotalProcessingTime_in_seconds <- as.numeric(difftime(end_time, start_time, units = "secs"))
+  }
+
+  class(results) <- c("perform_DataQualityCheck", "list")
 
   return(results)
 }
@@ -234,31 +224,48 @@ perform_DataQualityCheck <- function(
 # HELPER FUNCTIONS
 # ================================================================================
 
+#' Validate Function Parameters
+#' @keywords internal
+validate_parameters <- function(merge_method, file_location) {
+  if (!is.null(merge_method) && !merge_method %in% c("mean", "median")) {
+    stop("merge_duplicate_samples_by must be NULL, 'mean', or 'median'", call. = FALSE)
+  }
+  if (!is.null(file_location) && !is.character(file_location)) {
+    stop("file_location must be a character string or NULL", call. = FALSE)
+  }
+}
+
 #' Initialize Results Object
 #' @keywords internal
-initialize_results_object <- function(file_location, sheet_name, validate_qc,
-                                      allow_missing_optional, clean_names,
-                                      merge_duplicate_samples_by) {
+initialize_results_object <- function(file_location, sheet_name, skip_rows, separator,
+                                      validate_qc, allow_missing_optional,
+                                      clean_names, merge_duplicate_samples_by,
+                                      start_time) {
+  # Removed: quality_checked_data, file_location (top level), version
+  # Added: TotalProcessingTime_in_seconds inside processing_log
   list(
     FunctionOrigin = "perform_DataQualityCheck",
-    version = "2.1.0",
-    file_location = file_location,
-    sheet_name = sheet_name,
-    validate_qc = validate_qc,
-    allow_missing_optional = allow_missing_optional,
-    clean_names = clean_names,
-    merge_duplicate_samples_by = merge_duplicate_samples_by,
+    parameters = list(
+      file_location = file_location,
+      sheet_name = sheet_name,
+      skip_rows = skip_rows,
+      separator = separator,
+      validate_qc = validate_qc,
+      allow_missing_optional = allow_missing_optional,
+      clean_names = clean_names,
+      merge_duplicate_samples_by = merge_duplicate_samples_by
+    ),
     processing_log = list(
-      start_time = Sys.time(),
+      start_time = start_time,
       completion_time = NULL,
       success = FALSE,
-      error = NULL
+      error = NULL,
+      TotalProcessingTime_in_seconds = NULL
     ),
     file_info = list(),
     validation_report = list(),
     metadata_summary = list(),
-    raw_data = NULL,
-    quality_checked_data = NULL
+    raw_data = NULL
   )
 }
 
@@ -266,38 +273,31 @@ initialize_results_object <- function(file_location, sheet_name, validate_qc,
 #' @keywords internal
 load_and_validate_file <- function(file_location, sheet_name, skip_rows,
                                    separator, verbose) {
-
-  # Handle file selection
   if (is.null(file_location)) {
     file_location <- select_file_interactively()
   }
-
-  # Validate file existence
   if (!file.exists(file_location)) {
     stop("File does not exist: ", file_location, call. = FALSE)
   }
 
-  # Validate file size (optional safety check)
   file_size_mb <- file.size(file_location) / (1024^2)
-  if (file_size_mb > 500) {  # 500MB threshold
+  if (file_size_mb > 500) {
     warning("Large file detected (", round(file_size_mb, 1), "MB). Processing may be slow.")
   }
 
-  # Load data based on file type
   file_ext <- tolower(tools::file_ext(file_location))
 
   raw_data <- suppressMessages(
     switch(file_ext,
            "xlsx" = load_excel_file(file_location, sheet_name, skip_rows),
-           "csv"  = load_csv_file(file_location, separator, skip_rows),
-           "txt"  = load_delimited_file(file_location, separator, skip_rows),
-           "tsv"  = load_delimited_file(file_location, "\t", skip_rows),
-           stop("Unsupported file type: '", file_ext, "'. Supported types: xlsx, csv, tsv, txt",
+           "csv"  = load_csv_file(file_location, separator, skip_rows, verbose),
+           "txt"  = load_delimited_file(file_location, separator, skip_rows, verbose),
+           "tsv"  = load_delimited_file(file_location, "\t", skip_rows, verbose),
+           stop("Unsupported file type: '", file_ext, "'. Supported: xlsx, csv, tsv, txt",
                 call. = FALSE)
     )
   )
 
-  # Validate loaded data
   if (is.null(raw_data) || nrow(raw_data) == 0 || ncol(raw_data) == 0) {
     stop("Failed to load data or file is empty", call. = FALSE)
   }
@@ -306,30 +306,42 @@ load_and_validate_file <- function(file_location, sheet_name, skip_rows,
     message("... File loaded successfully: ", nrow(raw_data), " rows X ", ncol(raw_data), " columns")
   }
 
+  # Store the chosen file_location in the data object
+  attr(raw_data, "file_location") <- file_location
   return(raw_data)
 }
 
 #' Select File Interactively
 #' @keywords internal
 select_file_interactively <- function() {
+  message("file_location is NULL. Opening interactive file selection dialog...")
   if (requireNamespace("rstudioapi", quietly = TRUE) && rstudioapi::isAvailable()) {
-    return(rstudioapi::selectFile(
+    file_path <- rstudioapi::selectFile(
       caption = "Select metabolomics data file",
-      filter = "Data Files (*.xlsx, *.csv, *.tsv, *.txt)"
-    ))
+      filter = "Data Files (*.xlsx *.csv *.tsv *.txt)"
+    )
   } else {
-    return(file.choose())
+    file_path <- file.choose()
   }
+  if (is.null(file_path) || file_path == "") {
+    stop("No file selected. Aborting.", call. = FALSE)
+  }
+  message("... File selected: ", file_path)
+  return(file_path)
 }
 
 #' Load Excel File
 #' @keywords internal
 load_excel_file <- function(file_location, sheet_name, skip_rows) {
   if (!requireNamespace("readxl", quietly = TRUE)) {
-    stop("Package 'readxl' is required for Excel files but not available", call. = FALSE)
+    stop("Package 'readxl' is required for Excel files. Install with: install.packages('readxl')", call. = FALSE)
   }
-
   tryCatch({
+    if (is.null(sheet_name)) {
+      available_sheets <- readxl::excel_sheets(file_location)
+      sheet_name <- available_sheets[1]
+      message("... Using first sheet: ", sheet_name)
+    }
     readxl::read_excel(
       path = file_location,
       sheet = sheet_name,
@@ -338,13 +350,32 @@ load_excel_file <- function(file_location, sheet_name, skip_rows) {
       .name_repair = "minimal"
     )
   }, error = function(e) {
-    stop("Failed to read Excel file: ", e$message, call. = FALSE)
+    stop("Failed to read Excel file '", file_location, "' (sheet: ", sheet_name, "): ", e$message, call. = FALSE)
   })
 }
 
 #' Load CSV File
 #' @keywords internal
-load_csv_file <- function(file_location, separator, skip_rows) {
+load_csv_file <- function(file_location, separator, skip_rows, verbose) {
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    if (verbose) message("... Using data.table::fread for CSV loading")
+    tryCatch({
+      return(data.table::fread(
+        file = file_location,
+        header = FALSE,
+        sep = separator,
+        skip = skip_rows,
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        data.table = FALSE,
+        showProgress = FALSE
+      ))
+    }, error = function(e) {
+      warning("data.table::fread failed: ", e$message, ". Falling back to utils::read.csv")
+    })
+  }
+
+  if (verbose) message("... Using utils::read.csv (install 'data.table' for faster loading)")
   tryCatch({
     utils::read.csv(
       file = file_location,
@@ -361,7 +392,26 @@ load_csv_file <- function(file_location, separator, skip_rows) {
 
 #' Load Delimited File
 #' @keywords internal
-load_delimited_file <- function(file_location, separator, skip_rows) {
+load_delimited_file <- function(file_location, separator, skip_rows, verbose) {
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    if (verbose) message("... Using data.table::fread for delimited file loading")
+    tryCatch({
+      return(data.table::fread(
+        file = file_location,
+        header = FALSE,
+        sep = separator,
+        skip = skip_rows,
+        stringsAsFactors = FALSE,
+        check.names = FALSE,
+        data.table = FALSE,
+        showProgress = FALSE
+      ))
+    }, error = function(e) {
+      warning("data.table::fread failed: ", e$message, ". Falling back to utils::read.delim")
+    })
+  }
+
+  if (verbose) message("... Using utils::read.delim (install 'data.table' for faster loading)")
   tryCatch({
     utils::read.delim(
       file = file_location,
@@ -380,11 +430,11 @@ load_delimited_file <- function(file_location, separator, skip_rows) {
 #' @keywords internal
 extract_file_info <- function(file_location, raw_data) {
   list(
-    file_path = basename(file_location),  # Just the filename, not full path
+    file_path = file_location,
     file_name = basename(file_location),
     file_size_mb = round(file.size(file_location) / (1024^2), 2),
     file_extension = tolower(tools::file_ext(file_location)),
-    dimensions = list(rows = nrow(raw_data), columns = ncol(raw_data)),
+    dimensions_raw = list(rows = nrow(raw_data), columns = ncol(raw_data)),
     modification_time = file.mtime(file_location)
   )
 }
@@ -392,131 +442,183 @@ extract_file_info <- function(file_location, raw_data) {
 #' Clean Data Identifiers
 #' @keywords internal
 clean_data_identifiers <- function(raw_data, verbose) {
-
-  # Optimized text cleaning function
   clean_text_vectorized <- function(x) {
     x <- as.character(x)
-    x <- stringr::str_replace_all(x, "[^a-zA-Z0-9@._]", "_")
+    x <- stringr::str_replace_all(x, "[^a-zA-Z0-9@._-]", "_")
     x <- stringr::str_replace_all(x, "_{2,}", "_")
     x <- stringr::str_replace_all(x, "^_+|_+$", "")
     x <- stringr::str_trim(x)
     return(x)
   }
 
-  # Clean first column (row identifiers)
-  raw_data[[1]] <- clean_text_vectorized(raw_data[[1]])
-
-  # Clean specific rows (Sample and Replicate only - skip Group row)
-  target_rows <- c(1, 3)  # Sample and Replicate rows only
-  for (row_idx in target_rows) {
-    if (row_idx <= nrow(raw_data)) {
-      raw_data[row_idx, ] <- lapply(raw_data[row_idx, ], clean_text_vectorized)
-    }
-  }
-
-  if (verbose) {
-    message("... Special characters cleaned from identifiers (excluding Group row)")
-  }
+  # Clean first column (Metadata/Feature names)
+  raw_data[, 1] <- clean_text_vectorized(raw_data[, 1])
+  # Clean first row (Sample names)
+  raw_data[1, ] <- clean_text_vectorized(raw_data[1, ])
 
   return(raw_data)
 }
 
-#' Validate Data Structure
+#' Validate and Locate Metadata Rows
 #' @keywords internal
-validate_data_structure <- function(raw_data, allow_missing_optional) {
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
-                        "Batch", "Injection", "Normalization", "Response")
+validate_and_locate_metadata <- function(raw_data) {
 
-  # Check minimum dimensions
-  if (nrow(raw_data) < 10) {
-    stop("Data must have at least 9 rows (required metadata rows)", call. = FALSE)
+  if (nrow(raw_data) < 5) {
+    stop("Data must have at least 5 rows (Sample, Group, Batch, Injection, Response)", call. = FALSE)
   }
-
   if (ncol(raw_data) < 2) {
-    stop("Data must have at least 2 columns", call. = FALSE)
+    stop("Data must have at least 2 columns (Identifier column and at least one sample)", call. = FALSE)
   }
 
-  # Extract first column values
-  first_col_values <- as.character(unlist(raw_data[1:9, 1]))
+  first_col_values <- as.character(raw_data[, 1])
 
-  # Check for required headers
-  missing_headers <- required_headers[!required_headers %in% first_col_values]
-
-  if (length(missing_headers) > 0) {
-    stop("Missing required metadata rows: ", paste(missing_headers, collapse = ", "),
-         call. = FALSE)
+  # --- STRICT ORDER CHECK (ROWS 1-4) ---
+  # Case-insensitive check to be slightly user-friendly, but enforces the word
+  if (!grepl("^sample$", first_col_values[1], ignore.case = TRUE)) {
+    stop(paste0("Row 1 must be 'Sample'. Found: '", first_col_values[1], "'"), call. = FALSE)
+  }
+  if (!grepl("^group$", first_col_values[2], ignore.case = TRUE)) {
+    stop(paste0("Row 2 must be 'Group'. Found: '", first_col_values[2], "'"), call. = FALSE)
+  }
+  if (!grepl("^batch$", first_col_values[3], ignore.case = TRUE)) {
+    stop(paste0("Row 3 must be 'Batch'. Found: '", first_col_values[3], "'"), call. = FALSE)
+  }
+  if (!grepl("^injection$", first_col_values[4], ignore.case = TRUE)) {
+    stop(paste0("Row 4 must be 'Injection'. Found: '", first_col_values[4], "'"), call. = FALSE)
   }
 
-  # Validate header positions
-  header_positions <- match(required_headers, first_col_values)
-  expected_positions <- 1:9
+  # --- FIND RESPONSE ROW ---
+  # Must be after Injection (row 4)
+  response_indices <- which(grepl("^response$", first_col_values, ignore.case = TRUE))
 
-  if (!all(header_positions == expected_positions)) {
-    stop("Metadata rows are not in the correct order. Expected order: ",
-         paste(required_headers, collapse = ", "), call. = FALSE)
+  if (length(response_indices) == 0) {
+    stop("Could not find a 'Response' row in the first column.", call. = FALSE)
+  }
+
+  # We take the *first* occurrence of Response that is after row 4
+  valid_response_row <- response_indices[response_indices > 4][1]
+
+  if (is.na(valid_response_row)) {
+    stop("'Response' row must appear AFTER the 'Injection' row (Row 4).", call. = FALSE)
+  }
+
+  # --- UNIQUE METADATA CHECK ---
+  # Check all rows from 1 to Response for duplicates
+  metadata_names <- first_col_values[1:valid_response_row]
+
+  # Check if names are empty
+  if (any(metadata_names == "" | is.na(metadata_names))) {
+    stop("One or more metadata rows (between Sample and Response) have empty names.", call. = FALSE)
+  }
+
+  # Check for duplicates
+  duplicates <- metadata_names[duplicated(metadata_names)]
+  if (length(duplicates) > 0) {
+    stop("Duplicate metadata names found between Row 1 and Response row: ",
+         paste(unique(duplicates), collapse = ", "),
+         ". Metadata names must be unique.", call. = FALSE)
+  }
+
+  # Calculate Optional Rows
+  # Optional rows are anything between 4 (Injection) and the Response row
+  optional_rows <- setdiff(5:(valid_response_row - 1), integer(0))
+  optional_names <- if (length(optional_rows) > 0) first_col_values[optional_rows] else character(0)
+
+  # Feature start
+  feature_start_row <- valid_response_row + 1
+  total_features <- nrow(raw_data) - valid_response_row
+
+  if (total_features <= 0) {
+    stop("No feature rows found after the 'Response' row.", call. = FALSE)
   }
 
   return(list(
-    required_headers_present = TRUE,
-    header_positions = setNames(header_positions, required_headers),
-    total_features = ncol(raw_data) - 1,
-    total_samples = nrow(raw_data) - 9
+    sample_row = 1,
+    group_row = 2,
+    batch_row = 3,
+    injection_row = 4,
+    response_row = valid_response_row,
+    optional_rows = optional_rows,
+    optional_names = optional_names,
+    feature_start_row = feature_start_row,
+    total_features = total_features
   ))
 }
 
-#' Transpose and Prepare Data
+#' Transpose Data for Processing
 #' @keywords internal
-transpose_and_prepare_data <- function(raw_data) {
-  # Transpose so that samples are rows and features are columns
-  raw_data_t <- as.data.frame(t(raw_data))
+transpose_for_processing <- function(raw_data) {
+  # Transpose
+  transposed_data <- as.data.frame(t(raw_data), stringsAsFactors = FALSE)
 
-  # Set column names from first row and remove it
-  colnames(raw_data_t) <- as.character(raw_data_t[1, ])
-  raw_data_t <- raw_data_t[-1, ]
+  # Set column names from first row (which was raw_data[,1])
+  new_colnames <- as.character(transposed_data[1, ])
 
-  return(raw_data_t)
+  # Ensure column names are syntactically valid and unique
+  new_colnames <- make.names(new_colnames, unique = TRUE)
+  colnames(transposed_data) <- new_colnames
+
+  # Remove the first row (which is now headers)
+  transposed_data <- transposed_data[-1, , drop = FALSE]
+
+  # Reset row names (which were sample names, not needed)
+  rownames(transposed_data) <- NULL
+
+  return(transposed_data)
 }
 
 #' Validate Uniqueness Constraints
 #' @keywords internal
-validate_uniqueness_constraints <- function(raw_data, merge_duplicate_samples_by, verbose) {
-
+validate_uniqueness_constraints <- function(processed_data, merge_duplicate_samples_by,
+                                            feature_cols_processed, verbose) {
   validation_results <- list()
 
-  # Check sample names uniqueness
-  sample_names <- as.character(raw_data$Sample)
+  # 1. Check sample names
+  if (!"Sample" %in% colnames(processed_data)) {
+    stop("Internal error: 'Sample' column not found after transpose.", call. = FALSE)
+  }
+  sample_names <- as.character(processed_data$Sample)
   sample_duplicates <- find_duplicates(sample_names)
 
   if (length(sample_duplicates) > 0) {
     if (is.null(merge_duplicate_samples_by)) {
       stop("Duplicate sample names found: ", paste(sample_duplicates, collapse = ", "),
-           ". Set merge_duplicate_samples_by to 'mean' or 'median' to merge duplicates.",
+           ". Set merge_duplicate_samples_by to 'mean' or 'median' to merge.",
            call. = FALSE)
     } else {
-      validation_results$sample_names <- paste0("... Duplicate sample names found: ",
-                                                paste(sample_duplicates, collapse = ", "),
-                                                " (will be merged by ", merge_duplicate_samples_by, ")")
+      validation_results$sample_names <- paste0("OK (Duplicates found and will be merged: ",
+                                                paste(sample_duplicates, collapse = ", "), ")")
     }
   } else {
-    validation_results$sample_names <- "... All sample names are unique"
+    validation_results$sample_names <- "All sample names are unique"
   }
 
-  # Check injection sequence uniqueness (after potential merging)
-  injection_seq <- as.numeric(raw_data$Injection)
-  if (any(is.na(injection_seq))) {
-    stop("Non-numeric values found in Injection sequence", call. = FALSE)
+  # 2. Check injection sequence
+  if ("Injection" %in% colnames(processed_data)) {
+    injection_seq <- as.character(processed_data$Injection)
+
+    non_blank_injections <- injection_seq[injection_seq != "" & !is.na(injection_seq)]
+    suppressWarnings(numeric_injections <- as.numeric(non_blank_injections))
+
+    if (any(is.na(numeric_injections))) {
+      stop("Non-numeric values found in Injection sequence", call. = FALSE)
+    }
+
+    injection_duplicates <- find_duplicates(numeric_injections)
+    if (length(injection_duplicates) > 0) {
+      validation_results$injection_sequence <- paste0("Duplicate injection sequences found: ",
+                                                      paste(injection_duplicates, collapse = ", "))
+    } else {
+      validation_results$injection_sequence <- "All injection sequences are unique"
+    }
   }
 
-  # Check feature names uniqueness
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
-                        "Batch", "Injection", "Normalization", "Response")
-  feature_names <- colnames(raw_data)[!colnames(raw_data) %in% required_headers]
-  feature_duplicates <- find_duplicates(feature_names)
+  feature_duplicates <- find_duplicates(feature_cols_processed)
   if (length(feature_duplicates) > 0) {
-    stop("Duplicate feature/metabolite names found: ", paste(feature_duplicates, collapse = ", "),
-         call. = FALSE)
+    stop(paste("Internal error: Duplicate feature names detected after processing: ",
+               paste(feature_duplicates, collapse = ", ")), call. = FALSE)
   }
-  validation_results$feature_names <- "... All feature/metabolite names are unique"
+  validation_results$feature_names <- "All feature/metabolite names are unique"
 
   return(validation_results)
 }
@@ -524,239 +626,269 @@ validate_uniqueness_constraints <- function(raw_data, merge_duplicate_samples_by
 #' Find Duplicates in Vector
 #' @keywords internal
 find_duplicates <- function(x) {
-  unique(x[duplicated(x) | duplicated(x, fromLast = TRUE)])
+  unique(x[duplicated(x)])
 }
 
 #' Merge Duplicate Samples
 #' @keywords internal
-merge_duplicate_samples <- function(raw_data, method, verbose) {
+merge_duplicate_samples <- function(processed_data, method,
+                                              metadata_cols_processed,
+                                              feature_cols_processed,
+                                              verbose) {
 
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
-                        "Batch", "Injection", "Normalization", "Response")
+  if (!requireNamespace("dplyr", quietly = TRUE)) {
+    stop("Package 'dplyr' is required for merging duplicates.", call. = FALSE)
+  }
 
-  # Separate metadata and feature columns
-  metadata_cols <- raw_data[, required_headers, drop = FALSE]
-  feature_cols <- raw_data[, !colnames(raw_data) %in% required_headers, drop = FALSE]
+  present_metadata_cols <- intersect(metadata_cols_processed, colnames(processed_data))
+  present_feature_cols <- intersect(feature_cols_processed, colnames(processed_data))
 
-  # Convert feature columns to numeric
-  feature_cols[] <- lapply(feature_cols, function(x) {
-    as.numeric(as.character(x))
+  if (length(present_feature_cols) == 0) {
+    warning("No feature columns found during merge. Merging metadata only.")
+  }
+
+  agg_func <- if (method == "mean") mean else median
+
+  suppressWarnings({
+    processed_data <- processed_data %>%
+      dplyr::mutate(dplyr::across(dplyr::all_of(present_feature_cols), as.numeric))
   })
 
-  # Combine for grouping
-  combined_data <- cbind(metadata_cols, feature_cols)
+  metadata_for_first <- setdiff(present_metadata_cols, c("Sample", "Injection"))
 
-  # Find duplicate samples
-  sample_names <- as.character(combined_data$Sample)
-  duplicate_samples <- unique(sample_names[duplicated(sample_names)])
+  merged_data <- processed_data %>%
+    dplyr::group_by(Sample) %>%
+    dplyr::summarise(
+      dplyr::across(dplyr::all_of(metadata_for_first), dplyr::first),
+      dplyr::across(dplyr::all_of(present_feature_cols), ~ agg_func(.x, na.rm = TRUE)),
+      .groups = "drop"
+    )
 
-  if (verbose && length(duplicate_samples) > 0) {
-    message("... Found ", length(duplicate_samples), " unique sample(s) with duplicates: ",
-            paste(duplicate_samples, collapse = ", "))
+  if ("Injection" %in% present_metadata_cols) {
+    injection_summary <- processed_data %>%
+      dplyr::group_by(Sample) %>%
+      dplyr::summarise(
+        Injection = min(as.numeric(as.character(Injection)), na.rm = TRUE),
+        .groups = "drop"
+      )
+    merged_data <- dplyr::left_join(merged_data, injection_summary, by = "Sample")
   }
-
-  # Split data into duplicates and non-duplicates
-  is_duplicate <- sample_names %in% duplicate_samples
-  non_dup_data <- combined_data[!is_duplicate, , drop = FALSE]
-  dup_data <- combined_data[is_duplicate, , drop = FALSE]
-
-  if (nrow(dup_data) > 0) {
-    # Process duplicates
-    merged_list <- list()
-
-    for (sample in duplicate_samples) {
-      sample_rows <- dup_data[dup_data$Sample == sample, , drop = FALSE]
-
-      # Keep metadata from first occurrence
-      merged_row <- sample_rows[1, required_headers, drop = FALSE]
-
-      # Set Injection to minimum value among duplicates
-      merged_row$Injection <- min(as.numeric(sample_rows$Injection), na.rm = TRUE)
-
-      # Merge feature values
-      feature_data <- sample_rows[, !colnames(sample_rows) %in% required_headers, drop = FALSE]
-
-      if (method == "mean") {
-        merged_features <- colMeans(feature_data, na.rm = TRUE)
-      } else if (method == "median") {
-        merged_features <- apply(feature_data, 2, median, na.rm = TRUE)
-      }
-
-      merged_features_df <- as.data.frame(t(merged_features))
-      merged_row <- cbind(merged_row, merged_features_df)
-
-      merged_list[[sample]] <- merged_row
-    }
-
-    # Combine merged duplicates
-    merged_dup_data <- do.call(rbind, merged_list)
-
-    # Combine with non-duplicates
-    result <- rbind(non_dup_data, merged_dup_data)
-  } else {
-    result <- non_dup_data
-  }
-
-  # Reset row names
-  rownames(result) <- NULL
 
   if (verbose) {
-    message("... Merged ", nrow(combined_data) - nrow(result), " duplicate sample(s)")
-    message("... Final sample count: ", nrow(result))
+    message("... Merged duplicate samples. New sample count: ", nrow(merged_data))
   }
 
-  return(result)
+  return(as.data.frame(merged_data))
 }
 
 #' Sort Data by Injection Sequence
 #' @keywords internal
-sort_by_injection_sequence <- function(raw_data) {
-  # Convert injection to numeric and sort
-  raw_data$Injection <- as.numeric(raw_data$Injection)
-  raw_data <- raw_data[order(raw_data$Injection), ]
-
-  # Check for duplicate injections after merging
-  injection_duplicates <- find_duplicates(raw_data$Injection)
-  if (length(injection_duplicates) > 0) {
-    stop("Duplicate injection sequences found after merging: ",
-         paste(injection_duplicates, collapse = ", "),
-         call. = FALSE)
+sort_by_injection_sequence <- function(processed_data) {
+  if (!"Injection" %in% colnames(processed_data)) {
+    return(processed_data)
   }
-
-  return(raw_data)
+  tryCatch({
+    processed_data$Injection <- as.numeric(as.character(processed_data$Injection))
+    processed_data <- processed_data[order(processed_data$Injection), ]
+  }, error = function(e) {
+    warning("Could not sort by injection sequence: ", e$message)
+  })
+  rownames(processed_data) <- NULL
+  return(processed_data)
 }
 
 #' Validate QC Rules
 #' @keywords internal
-validate_qc_rules <- function(raw_data) {
-
-  # Transpose back for row-based operations
-  raw_data_t <- as.data.frame(t(raw_data))
-
-  # Find QC columns (case insensitive)
-  group_row <- as.character(raw_data_t[4, ])  # Group row
-  qc_cols <- which(grepl("SQC|EQC|QC", group_row, ignore.case = TRUE))
-
-  if (length(qc_cols) == 0) {
-    return(list(message = "No QC columns found", qc_columns = 0))
+validate_qc_rules <- function(processed_data) {
+  if (!"Group" %in% colnames(processed_data)) {
+    return(list(message = "No 'Group' column found, skipping QC validation", qc_samples = 0))
   }
 
-  # Check rows that should be empty for QC samples
-  rows_to_check <- c(2, 3, 8, 9)  # SubjectID, Replicate, Normalization, Response
+  qc_indices <- which(grepl("QC", processed_data$Group, ignore.case = TRUE))
+  if (length(qc_indices) == 0) {
+    return(list(message = "No QC samples found", qc_samples = 0))
+  }
+
+  rows_to_check <- c("SubjectID", "Replicate", "Normalization", "Response")
   violations <- c()
 
-  for (col in qc_cols) {
-    for (row in rows_to_check) {
-      if (nrow(raw_data_t) >= row && ncol(raw_data_t) >= col) {
-        cell_value <- raw_data_t[row, col]
-        if (!is.na(cell_value) && cell_value != "" && cell_value != "0") {
-          violations <- c(violations, paste0("Row ", row, " Col ", col))
-        }
+  for (row_name in rows_to_check) {
+    if (row_name %in% colnames(processed_data)) {
+      qc_values <- processed_data[qc_indices, row_name]
+      problematic <- !is.na(qc_values) & qc_values != "" & qc_values != "0"
+
+      if (any(problematic)) {
+        bad_samples <- processed_data$Sample[qc_indices[which(problematic)]]
+        violations <- c(violations, paste0(row_name, " (samples: ", paste(unique(bad_samples), collapse = ", "), ")"))
       }
     }
   }
 
   if (length(violations) > 0) {
-    stop("QC rule violations: QC samples must have empty values in SubjectID, Replicate, Normalization, and Response rows. Violations found at: ",
-         paste(violations, collapse = ", "), call. = FALSE)
+    stop("QC rule violations: QC samples must have empty/0 values in ",
+         paste(rows_to_check, collapse = ", "),
+         " columns. Violations found in: ", paste(violations, collapse = "; "),
+         call. = FALSE)
   }
 
   return(list(
-    message = "... QC rules validated successfully",
-    qc_columns = length(qc_cols),
-    qc_samples = sum(grepl("SQC|EQC|QC", raw_data$Group, ignore.case = TRUE))
+    message = "QC rules validated successfully",
+    qc_samples_found = length(qc_indices)
   ))
 }
 
 #' Validate Numeric Features
 #' @keywords internal
-validate_numeric_features <- function(raw_data) {
-
-  required_headers <- c("Sample", "SubjectID", "Replicate", "Group", "Group2",
-                        "Batch", "Injection", "Normalization", "Response")
-
-  # Extract feature columns
-  feature_cols <- raw_data[, !colnames(raw_data) %in% required_headers, drop = FALSE]
-
-  if (ncol(feature_cols) == 0) {
-    stop("No feature/metabolite columns found", call. = FALSE)
+validate_numeric_features <- function(processed_data, feature_cols_processed) {
+  if (length(feature_cols_processed) == 0) {
+    stop("No feature/metabolite columns were identified for numeric validation.", call. = FALSE)
   }
+  feature_data <- processed_data[, feature_cols_processed, drop = FALSE]
+  if (nrow(feature_data) == 0) {
+    stop("No sample rows found to validate.", call. = FALSE)
+  }
+  feature_matrix <- as.matrix(feature_data)
+  original_na <- is.na(feature_matrix) | feature_matrix == "" | feature_matrix == "0"
 
-  # Test numeric conversion
-  conversion_issues <- c()
+  suppressWarnings({
+    numeric_matrix <- matrix(
+      as.numeric(feature_matrix),
+      nrow = nrow(feature_matrix),
+      dimnames = dimnames(feature_matrix)
+    )
+  })
+  conversion_na <- is.na(numeric_matrix)
+  problematic_cells <- conversion_na & !original_na
 
-  for (col_name in colnames(feature_cols)) {
-    col_data <- feature_cols[[col_name]]
-
-    # Convert to numeric, checking for issues
-    suppressWarnings({
-      numeric_data <- as.numeric(col_data)
-    })
-
-    # Check for conversion issues (excluding originally missing values)
-    original_na <- is.na(col_data) | col_data == "" | col_data == "0"
-    conversion_na <- is.na(numeric_data)
-
-    problematic <- !original_na & conversion_na
-
-    if (any(problematic)) {
-      problematic_values <- unique(col_data[problematic])
-      conversion_issues <- c(conversion_issues,
-                             paste0(col_name, ": ", paste(problematic_values, collapse = ", ")))
+  if (any(problematic_cells)) {
+    problem_indices <- which(problematic_cells, arr.ind = TRUE)
+    problem_cols <- unique(problem_indices[, "col"])
+    conversion_issues <- list()
+    for (col_idx in problem_cols) {
+      col_name <- colnames(feature_matrix)[col_idx]
+      problem_rows <- problem_indices[problem_indices[, "col"] == col_idx, "row"]
+      problem_values <- unique(feature_matrix[problem_rows, col_idx])
+      conversion_issues[[col_name]] <- paste(problem_values, collapse = ", ")
     }
-  }
-
-  if (length(conversion_issues) > 0) {
-    stop("Non-numeric values found in feature columns:\n",
-         paste(conversion_issues, collapse = "\n"), call. = FALSE)
+    stop_message <- paste(names(conversion_issues), conversion_issues, sep = ": ", collapse = "\n")
+    stop("Non-numeric values found in feature columns:\n", stop_message, call. = FALSE)
   }
 
   return(list(
-    message = "... All feature data is numeric or convertible to numeric",
-    feature_count = ncol(feature_cols),
-    sample_count = nrow(feature_cols)
+    message = "All feature data is numeric or convertible to numeric (NA/empty/0)",
+    feature_count = ncol(feature_data),
+    sample_count = nrow(feature_data)
   ))
 }
 
 #' Finalize Data Structure
 #' @keywords internal
-finalize_data_structure <- function(raw_data) {
-
-  # Transpose back to Features x Samples format for output
-  raw_data_final <- t(raw_data)
-  raw_data_final <- cbind(rownames(raw_data_final), raw_data_final)
-  rownames(raw_data_final) <- NULL
-  raw_data_final <- as.data.frame(raw_data_final)
-
-  return(raw_data_final)
+finalize_data_structure <- function(processed_data, feature_cols_processed) {
+  if (length(feature_cols_processed) > 0) {
+    processed_data[feature_cols_processed] <- lapply(
+      processed_data[feature_cols_processed],
+      function(x) as.numeric(as.character(x))
+    )
+    processed_data[feature_cols_processed] <- lapply(
+      processed_data[feature_cols_processed],
+      function(x) {
+        x[is.na(x)] <- 0
+        return(x)
+      }
+    )
+  }
+  if ("Injection" %in% colnames(processed_data)) {
+    processed_data$Injection <- as.numeric(as.character(processed_data$Injection))
+  }
+  return(processed_data)
 }
 
 #' Generate Metadata Summary
 #' @keywords internal
-generate_metadata_summary <- function(raw_data) {
-
-  # Extract metadata from transposed format
-  raw_data_samples <- as.data.frame(t(raw_data))
-  colnames(raw_data_samples) <- raw_data_samples[1, ]
-  raw_data_samples <- raw_data_samples[-1, ]
+generate_metadata_summary <- function(processed_data, metadata_cols_processed,
+                                      feature_cols_processed) {
 
   summary_stats <- list(
-    total_samples = nrow(raw_data_samples),
-    total_features = ncol(raw_data_samples) - 9,
-    groups = table(raw_data_samples$Group),
-    unique_groups = unique(raw_data_samples$Group),
-    groups2 = table(raw_data_samples$Group2),
-    batches = length(unique(raw_data_samples$Batch)),
-    unique_batches = unique(raw_data_samples$Batch),
-    qc_samples = sum(grepl("QC", raw_data_samples$Group, ignore.case = TRUE)),
-    injection_range = range(as.numeric(raw_data_samples$Injection), na.rm = TRUE),
-    missing_data_summary = list(
-      subjectid = sum(is.na(raw_data_samples$SubjectID) | raw_data_samples$SubjectID == ""),
-      replicate = sum(is.na(raw_data_samples$Replicate) | raw_data_samples$Replicate == ""),
-      normalization = sum(is.na(raw_data_samples$Normalization) | raw_data_samples$Normalization == ""),
-      response = sum(is.na(raw_data_samples$Response) | raw_data_samples$Response == "")
-    )
+    total_samples = nrow(processed_data),
+    total_features = length(feature_cols_processed),
+    metadata_columns = metadata_cols_processed
   )
 
+  # Group summary - CHANGED TO DATA FRAME
+  if ("Group" %in% colnames(processed_data)) {
+    group_tbl <- table(processed_data$Group)
+    summary_stats$groups <- data.frame(
+      Group = names(group_tbl),
+      Count = as.numeric(group_tbl),
+      stringsAsFactors = FALSE
+    )
+    summary_stats$qc_samples_found <- sum(grepl("QC", processed_data$Group, ignore.case = TRUE))
+  }
+
+  # Batch summary
+  if ("Batch" %in% colnames(processed_data)) {
+    summary_stats$batches <- length(unique(processed_data$Batch))
+    summary_stats$unique_batches <- unique(processed_data$Batch)
+  }
+
+  # Injection summary
+  if ("Injection" %in% colnames(processed_data)) {
+    summary_stats$injection_range <- range(processed_data$Injection, na.rm = TRUE)
+  }
+
   return(summary_stats)
+}
+
+# S3 Methods
+#' @export
+print.perform_DataQualityCheck <- function(x, ...) {
+  cat("=== Metabolomics Data Quality Check ===\n")
+  cat("File:      ", x$file_info$file_name, "\n")
+  cat("Raw Dim:   ", x$file_info$dimensions_raw$rows, "rows x", x$file_info$dimensions_raw$columns, "cols\n")
+  cat("Status:    ", ifelse(x$processing_log$success, "Pass", "Fail"), "\n")
+  cat("Processed: ", format(x$processing_log$completion_time, "%Y-%m-%d %H:%M:%S"), "\n")
+
+  if (!is.null(x$validation_report$numeric_data$message)) {
+    cat("Validation:", x$validation_report$numeric_data$message, "\n")
+  }
+  invisible(x)
+}
+
+#' @export
+summary.perform_DataQualityCheck <- function(object, ...) {
+  ans <- list(
+    file = object$file_info$file_name,
+    samples = object$metadata_summary$total_samples,
+    features = object$metadata_summary$total_features,
+    groups = object$metadata_summary$groups,
+    qc_count = object$metadata_summary$qc_samples_found,
+    merge_info = object$validation_report$merge_info,
+    duration = object$processing_log$TotalProcessingTime_in_seconds
+  )
+  class(ans) <- "summary.perform_DataQualityCheck"
+  return(ans)
+}
+
+#' @export
+print.summary.perform_DataQualityCheck <- function(x, ...) {
+  cat("---------------------------------------\n")
+  cat("Data Quality Check Summary\n")
+  cat("---------------------------------------\n")
+  cat(sprintf("%-20s %s\n", "File Name:", x$file))
+  cat(sprintf("%-20s %d\n", "Total Samples:", x$samples))
+  cat(sprintf("%-20s %d\n", "Total Features:", x$features))
+  cat(sprintf("%-20s %d\n", "QC Samples:", x$qc_count))
+  cat(sprintf("%-20s %.2f seconds\n", "Processing Time:", x$duration))
+
+  if (!is.null(x$merge_info$method)) {
+    cat("\n-- Replicate Merging --\n")
+    cat("Method:", x$merge_info$method, "\n")
+    cat("Samples after merge:", x$merge_info$samples_after_merge, "\n")
+  }
+
+  if (!is.null(x$groups)) {
+    cat("\n-- Group Distribution --\n")
+    print(x$groups, row.names = FALSE)
+  }
+  invisible(x)
 }

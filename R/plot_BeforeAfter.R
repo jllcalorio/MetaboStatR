@@ -4,14 +4,14 @@
 #' Creates comprehensive visualizations comparing data distributions and patterns
 #' before and after preprocessing steps. Generates density plots and box plots
 #' from either sample or feature perspectives to assess preprocessing effectiveness.
-#' Supports both PCA and PLS scaled data visualization with intelligent
+#' Supports both NON-PLS and PLS scaled data visualization with intelligent
 #' random sampling for large datasets.
 #'
 #' @param data List. A preprocessing results object from \code{perform_PreprocessingPeakData}
 #'   function containing original data, transformed data, and metadata.
 #' @param scaled Character. Specifies which preprocessed data to visualize:
 #'   \itemize{
-#'     \item \code{"PCA"}: Uses PCA-scaled preprocessed data
+#'     \item \code{"NONPLS"}: Uses NONPLS-scaled preprocessed data
 #'     \item \code{"PLS"}: Uses PLS-scaled preprocessed data
 #'   }
 #'   Default: \code{"PLS"}
@@ -52,10 +52,10 @@
 #'   group_by = "Sample"
 #' )
 #'
-#' # Feature perspective with PCA scaling
+#' # Feature perspective with NONPLS scaling
 #' feature_plots <- plot_BeforeAfter(
 #'   data = preprocessing_results,
-#'   scaled = "PCA",
+#'   scaled = "NONPLS",
 #'   group_by = "Feature",
 #'   n_random_features = 20
 #' )
@@ -65,11 +65,12 @@
 #' }
 #'
 #' @export
-#' @importFrom ggplot2 ggplot aes geom_density geom_boxplot ggtitle theme_minimal coord_flip element_text
-#' @importFrom dplyr filter
+#' @importFrom ggplot2 ggplot aes geom_density geom_boxplot ggtitle theme_minimal coord_flip element_text labs theme
+#' @importFrom dplyr filter mutate
 #' @importFrom tidyr pivot_longer
 #' @importFrom tibble rownames_to_column
 #' @importFrom gridExtra grid.arrange
+#' @importFrom grid textGrob gpar
 #' @importFrom stats setNames
 #'
 #' @author John Lennon L. Calorio
@@ -84,404 +85,214 @@ plot_BeforeAfter <- function(data,
                              seed = 123L) {
 
   # Set seed for reproducibility
-  if (!is.null(seed)) {
-    set.seed(seed)
+  if (!is.null(seed)) set.seed(seed)
+
+  # ===== Input Validation =====
+  if (!is.list(data)) stop("Input 'data' must be a list object.", call. = FALSE)
+
+  if (is.null(data$FunctionOrigin) || data$FunctionOrigin != "perform_PreprocessingPeakData") {
+    stop("Data must originate from 'perform_PreprocessingPeakData' function.", call. = FALSE)
   }
 
-  # Validate inputs
-  .validate_inputs_plotbeforeafter(data, scaled, group_by, n_random_samples, n_random_features, seed)
+  required_components <- c("data_no_NA", "Metadata", "data_scaledNONPLS_varFiltered")
+  missing <- setdiff(required_components, names(data))
+  if (length(missing) > 0) {
+    stop("Missing required data components: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
 
-  # Check and load required packages
-  .check_required_packages()
+  if (!scaled %in% c("NONPLS", "PLS")) stop("'scaled' must be either 'NONPLS' or 'PLS'.", call. = FALSE)
+  if (!group_by %in% c("Sample", "Feature")) stop("'group_by' must be either 'Sample' or 'Feature'.", call. = FALSE)
 
-  # Initialize results list
-  results <- list(
+  if (!is.null(n_random_samples) && (n_random_samples <= 0 || !is.numeric(n_random_samples))) {
+    stop("'n_random_samples' must be a positive integer or NULL.", call. = FALSE)
+  }
+
+  if (!is.null(n_random_features) && (n_random_features <= 0 || !is.numeric(n_random_features))) {
+    stop("'n_random_features' must be a positive integer or NULL.", call. = FALSE)
+  }
+
+  if (is.null(data$Metadata$Group_)) {
+    stop("Metadata must contain 'Group_' column for QC identification.", call. = FALSE)
+  }
+
+  # Check required packages
+  required_packages <- c("ggplot2", "dplyr", "tidyr", "tibble", "gridExtra", "grid")
+  missing_pkgs <- required_packages[!sapply(required_packages, requireNamespace, quietly = TRUE)]
+  if (length(missing_pkgs) > 0) {
+    stop("Required packages not installed: ", paste(missing_pkgs, collapse = ", "),
+         "\nInstall with: install.packages(c('", paste(missing_pkgs, collapse = "', '"), "'))",
+         call. = FALSE)
+  }
+
+  # ===== Data Preparation =====
+  non_qc_idx <- data$Metadata$Group_ != "QC"
+  if (!any(non_qc_idx)) stop("No non-QC samples found in the data.", call. = FALSE)
+
+  # Extract matrices using vectorized subsetting
+  original <- data$data_no_NA[non_qc_idx, , drop = FALSE]
+  transformed <- data$data_scaledNONPLS_varFiltered[non_qc_idx, , drop = FALSE]
+
+  if (nrow(original) == 0 || ncol(original) == 0) {
+    stop("Original data is empty after removing QC samples.", call. = FALSE)
+  }
+
+  # Ensure consistent naming
+  if (is.null(rownames(original))) rownames(original) <- rownames(transformed)
+  if (is.null(colnames(original))) colnames(original) <- colnames(transformed)
+
+  # Match features between datasets
+  common_features <- intersect(colnames(original), colnames(transformed))
+  if (length(common_features) < ncol(transformed)) {
+    original <- original[, common_features, drop = FALSE]
+    transformed <- transformed[, common_features, drop = FALSE]
+  }
+
+  # ===== Convert to Long Format =====
+  # Vectorized conversion avoiding loops
+  orig_df <- as.data.frame(original)
+  trans_df <- as.data.frame(transformed)
+
+  orig_df$Sample <- rownames(original)
+  trans_df$Sample <- rownames(transformed)
+
+  # Use data.table-style melting for speed if available, otherwise tidyr
+  orig_long <- tidyr::pivot_longer(orig_df, -Sample, names_to = "Feature", values_to = "Value")
+  trans_long <- tidyr::pivot_longer(trans_df, -Sample, names_to = "Feature", values_to = "Value")
+
+  orig_long$DataType <- "Before"
+  trans_long$DataType <- "After"
+
+  # ===== Generate Plots Based on Group By =====
+  if (group_by == "Sample") {
+    # Density plots
+    p1 <- ggplot2::ggplot(orig_long, ggplot2::aes(x = Value)) +
+      ggplot2::geom_density(alpha = 0.6, fill = "steelblue", color = "darkblue") +
+      ggplot2::ggtitle("Sample Distribution - Before Preprocessing") +
+      ggplot2::theme_minimal() +
+      ggplot2::labs(x = "Intensity Values", y = "Density") +
+      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+    p2 <- ggplot2::ggplot(trans_long, ggplot2::aes(x = Value)) +
+      ggplot2::geom_density(alpha = 0.6, fill = "coral", color = "darkred") +
+      ggplot2::ggtitle("Sample Distribution - After Preprocessing") +
+      ggplot2::theme_minimal() +
+      ggplot2::labs(x = "Scaled Values", y = "Density") +
+      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+    # Box plots - vectorized sample selection
+    common_samples <- intersect(unique(orig_long$Sample), unique(trans_long$Sample))
+    n_samples <- length(common_samples)
+
+    if (is.null(n_random_samples) || n_random_samples >= n_samples) {
+      selected_samples <- common_samples
+      n_selected <- n_samples
+    } else {
+      selected_samples <- sample(common_samples, min(n_random_samples, n_samples))
+      n_selected <- length(selected_samples)
+    }
+
+    # Vectorized filtering
+    orig_subset <- orig_long[orig_long$Sample %in% selected_samples, ]
+    trans_subset <- trans_long[trans_long$Sample %in% selected_samples, ]
+
+    p3 <- ggplot2::ggplot(orig_subset, ggplot2::aes(x = reorder(Sample, Value, FUN = median), y = Value)) +
+      ggplot2::geom_boxplot(fill = "lightblue", alpha = 0.7) +
+      ggplot2::ggtitle(paste("Sample Profiles - Before (n =", n_selected, ")")) +
+      ggplot2::theme_minimal() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = "Samples", y = "Intensity Values") +
+      ggplot2::theme(axis.text.y = ggplot2::element_text(size = 8),
+                     plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+    p4 <- ggplot2::ggplot(trans_subset, ggplot2::aes(x = reorder(Sample, Value, FUN = median), y = Value)) +
+      ggplot2::geom_boxplot(fill = "lightcoral", alpha = 0.7) +
+      ggplot2::ggtitle(paste("Sample Profiles - After (n =", n_selected, ")")) +
+      ggplot2::theme_minimal() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = "Samples", y = "Scaled Values") +
+      ggplot2::theme(axis.text.y = ggplot2::element_text(size = 8),
+                     plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+  } else {  # Feature perspective
+    # Vectorized feature selection
+    common_features <- intersect(unique(orig_long$Feature), unique(trans_long$Feature))
+    n_features <- length(common_features)
+
+    if (is.null(n_random_features) || n_random_features >= n_features) {
+      selected_features <- common_features
+      n_selected <- n_features
+    } else {
+      selected_features <- sample(common_features, min(n_random_features, n_features))
+      n_selected <- length(selected_features)
+    }
+
+    # Vectorized filtering
+    orig_subset <- orig_long[orig_long$Feature %in% selected_features, ]
+    trans_subset <- trans_long[trans_long$Feature %in% selected_features, ]
+
+    # Density plots
+    p1 <- ggplot2::ggplot(orig_subset, ggplot2::aes(x = Value)) +
+      ggplot2::geom_density(alpha = 0.6, fill = "steelblue", color = "darkblue") +
+      ggplot2::ggtitle(paste("Feature Distribution - Before (n =", n_selected, ")")) +
+      ggplot2::theme_minimal() +
+      ggplot2::labs(x = "Intensity Values", y = "Density") +
+      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+    p2 <- ggplot2::ggplot(trans_subset, ggplot2::aes(x = Value)) +
+      ggplot2::geom_density(alpha = 0.6, fill = "coral", color = "darkred") +
+      ggplot2::ggtitle(paste("Feature Distribution - After (n =", n_selected, ")")) +
+      ggplot2::theme_minimal() +
+      ggplot2::labs(x = "Scaled Values", y = "Density") +
+      ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+    # Box plots
+    p3 <- ggplot2::ggplot(orig_subset, ggplot2::aes(x = reorder(Feature, Value, FUN = median), y = Value)) +
+      ggplot2::geom_boxplot(fill = "lightblue", alpha = 0.7) +
+      ggplot2::ggtitle(paste("Feature Profiles - Before (n =", n_selected, ")")) +
+      ggplot2::theme_minimal() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = "Features", y = "Intensity Values") +
+      ggplot2::theme(axis.text.y = ggplot2::element_text(size = 8),
+                     plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+
+    p4 <- ggplot2::ggplot(trans_subset, ggplot2::aes(x = reorder(Feature, Value, FUN = median), y = Value)) +
+      ggplot2::geom_boxplot(fill = "lightcoral", alpha = 0.7) +
+      ggplot2::ggtitle(paste("Feature Profiles - After (n =", n_selected, ")")) +
+      ggplot2::theme_minimal() +
+      ggplot2::coord_flip() +
+      ggplot2::labs(x = "Features", y = "Scaled Values") +
+      ggplot2::theme(axis.text.y = ggplot2::element_text(size = 8),
+                     plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
+  }
+
+  # ===== Create Combined Plot =====
+  main_title <- paste("Data Preprocessing Comparison:", group_by, "Perspective")
+  combined_plot <- gridExtra::grid.arrange(
+    grobs = list(p1, p2, p3, p4),
+    nrow = 2, ncol = 2,
+    top = grid::textGrob(main_title, gp = grid::gpar(fontsize = 14, fontface = "bold"))
+  )
+
+  # ===== Return Results =====
+  list(
     FunctionOrigin = "plot_BeforeAfter",
+    data_before = original,
+    data_after = transformed,
+    plot_density_before = p1,
+    plot_density_after = p2,
+    plot_box_before = p3,
+    plot_box_after = p4,
+    plot_combined = combined_plot,
     processing_info = list(
       scaled = scaled,
       group_by = group_by,
       n_random_samples = n_random_samples,
       n_random_features = n_random_features,
       seed = seed,
+      original_dims = dim(original),
+      transformed_dims = dim(transformed),
+      qc_samples_removed = sum(data$Metadata$Group_ == "QC"),
       timestamp = Sys.time()
     )
   )
-
-  # Extract and prepare data
-  data_prep <- .prepare_data_plotbeforeafter(data, scaled)
-  results$data_before <- data_prep$original
-  results$data_after <- data_prep$transformed
-
-  # Convert to long format for ggplot
-  long_data <- .convert_to_long_format_plotbeforeafter(data_prep$original, data_prep$transformed)
-
-  # Generate plots based on group_by parameter
-  if (group_by == "Sample") {
-    plots <- .create_sample_plots_plotbeforeafter(long_data, data_prep$transformed, n_random_samples)
-  } else {
-    plots <- .create_feature_plots_plotbeforeafter(long_data, data_prep$transformed, n_random_features)
-  }
-
-  # Store individual plots
-  results$plot_density_before <- plots$p1
-  results$plot_density_after <- plots$p2
-  results$plot_box_before <- plots$p3
-  results$plot_box_after <- plots$p4
-
-  # Create combined plot
-  results$plot_combined <- .create_combined_plot_plotbeforeafter(plots, group_by)
-
-  # Add processing summary
-  results$processing_info$original_dims <- dim(data_prep$original)
-  results$processing_info$transformed_dims <- dim(data_prep$transformed)
-  results$processing_info$qc_samples_removed <- sum(data$Metadata$Group_ == "QC")
-
-  return(results)
-}
-
-#' Validate Input Parameters
-#' @noRd
-.validate_inputs_plotbeforeafter <- function(data, scaled, group_by, n_random_samples, n_random_features, seed) {
-
-  # Check data structure
-  if (!is.list(data)) {
-    stop("Input 'data' must be a list object.", call. = FALSE)
-  }
-
-  # Check function origin
-  if (is.null(data$FunctionOrigin) || data$FunctionOrigin != "perform_PreprocessingPeakData") {
-    stop("Data must originate from 'perform_PreprocessingPeakData' function.", call. = FALSE)
-  }
-
-  # Required data components
-  required_components <- c("data_no_NA", "Metadata", "data_scaledPCA_varFiltered")
-  missing_components <- setdiff(required_components, names(data))
-  if (length(missing_components) > 0) {
-    stop("Missing required data components: ", paste(missing_components, collapse = ", "),
-         call. = FALSE)
-  }
-
-  # Validate scaled parameter
-  if (!is.character(scaled) || length(scaled) != 1) {
-    stop("'scaled' must be a single character string.", call. = FALSE)
-  }
-  if (!scaled %in% c("PCA", "PLS")) {
-    stop("'scaled' must be either 'PCA' or 'PLS'.", call. = FALSE)
-  }
-
-  # Validate group_by parameter
-  if (!is.character(group_by) || length(group_by) != 1) {
-    stop("'group_by' must be a single character string.", call. = FALSE)
-  }
-  if (!group_by %in% c("Sample", "Feature")) {
-    stop("'group_by' must be either 'Sample' or 'Feature'.", call. = FALSE)
-  }
-
-  # Validate numeric parameters
-  if (!is.null(n_random_samples)) {
-    if (!is.numeric(n_random_samples) || length(n_random_samples) != 1 || n_random_samples <= 0) {
-      stop("'n_random_samples' must be a positive integer or NULL.", call. = FALSE)
-    }
-    if (n_random_samples != as.integer(n_random_samples)) {
-      warning("'n_random_samples' converted to integer.", call. = FALSE)
-      n_random_samples <- as.integer(n_random_samples)
-    }
-  }
-
-  if (!is.null(n_random_features)) {
-    if (!is.numeric(n_random_features) || length(n_random_features) != 1 || n_random_features <= 0) {
-      stop("'n_random_features' must be a positive integer or NULL.", call. = FALSE)
-    }
-    if (n_random_features != as.integer(n_random_features)) {
-      warning("'n_random_features' converted to integer.", call. = FALSE)
-      n_random_features <- as.integer(n_random_features)
-    }
-  }
-
-  # Validate seed
-  if (!is.null(seed)) {
-    if (!is.numeric(seed) || length(seed) != 1) {
-      stop("'seed' must be a single integer or NULL.", call. = FALSE)
-    }
-  }
-
-  # Check metadata structure
-  if (is.null(data$Metadata$Group_)) {
-    stop("Metadata must contain 'Group_' column for QC identification.", call. = FALSE)
-  }
-
-  # Check data dimensions compatibility
-  if (nrow(data$data_no_NA) != nrow(data$Metadata)) {
-    stop("Number of rows in data and metadata must match.", call. = FALSE)
-  }
-}
-
-#' Check and Load Required Packages
-#' @noRd
-.check_required_packages <- function() {
-  required_packages <- c("ggplot2", "dplyr", "tidyr", "tibble", "gridExtra")
-
-  for (pkg in required_packages) {
-    if (!requireNamespace(pkg, quietly = TRUE)) {
-      stop("Package '", pkg, "' is required but not installed. Please install it with: install.packages('",
-           pkg, "')", call. = FALSE)
-    }
-  }
-}
-
-#' Prepare Data for Visualization
-#' @noRd
-.prepare_data_plotbeforeafter <- function(data, scaled) {
-
-  # Identify non-QC samples
-  non_qc_indices <- data$Metadata$Group_ != "QC"
-
-  if (sum(non_qc_indices) == 0) {
-    stop("No non-QC samples found in the data.", call. = FALSE)
-  }
-
-  # Extract original data (non-QC samples only)
-  original <- data$data_no_NA[non_qc_indices, , drop = FALSE]
-
-  # Extract transformed data based on scaling method
-  # Note: Both PCA and PLS use the same preprocessed data in this implementation
-  transformed <- data$data_scaledPCA_varFiltered[non_qc_indices, , drop = FALSE]
-
-  # Validate data integrity
-  if (nrow(original) == 0 || ncol(original) == 0) {
-    stop("Original data is empty after removing QC samples.", call. = FALSE)
-  }
-
-  if (nrow(transformed) == 0 || ncol(transformed) == 0) {
-    stop("Transformed data is empty.", call. = FALSE)
-  }
-
-  if (!identical(dim(original), dim(transformed))) {
-    warning("Original and transformed data have different dimensions. This may affect visualization.",
-            call. = FALSE)
-  }
-
-  # Check for missing values
-  if (any(is.na(original))) {
-    warning("Original data contains missing values which may affect visualization.", call. = FALSE)
-  }
-
-  if (any(is.na(transformed))) {
-    warning("Transformed data contains missing values which may affect visualization.", call. = FALSE)
-  }
-
-  return(list(original = original, transformed = transformed))
-}
-
-#' Convert Data to Long Format
-#' @noRd
-.convert_to_long_format_plotbeforeafter <- function(original, transformed) {
-
-  # Ensure consistent naming between original and transformed data
-  # Use transformed data column/row names as reference for consistency
-  transformed_sample_names <- rownames(transformed)
-  transformed_feature_names <- colnames(transformed)
-
-  # Apply consistent naming to original data
-  if (is.null(rownames(original))) {
-    rownames(original) <- transformed_sample_names
-  } else {
-    # Ensure original has same sample names as transformed
-    rownames(original) <- transformed_sample_names
-  }
-
-  if (is.null(colnames(original))) {
-    colnames(original) <- transformed_feature_names
-  } else {
-    # Ensure original has same feature names as transformed (in case of filtering)
-    # Only keep features that exist in transformed data
-    common_features <- intersect(colnames(original), transformed_feature_names)
-    if (length(common_features) > 0) {
-      original <- original[, common_features, drop = FALSE]
-      transformed <- transformed[, common_features, drop = FALSE]
-    } else {
-      # If no common features, use transformed feature names
-      colnames(original) <- transformed_feature_names
-    }
-  }
-
-  # Helper function to convert matrix to long format
-  to_long <- function(mat, data_type) {
-    mat %>%
-      as.data.frame() %>%
-      tibble::rownames_to_column(var = "Sample") %>%
-      tidyr::pivot_longer(-Sample, names_to = "Feature", values_to = "Value") %>%
-      dplyr::mutate(DataType = data_type)
-  }
-
-  # Convert both datasets
-  orig_long <- to_long(original, "Before")
-  trans_long <- to_long(transformed, "After")
-
-  return(list(original = orig_long, transformed = trans_long))
-}
-
-#' Create Sample-wise Plots
-#' @noRd
-.create_sample_plots_plotbeforeafter <- function(long_data, transformed, n_random_samples) {
-
-  orig_long <- long_data$original
-  trans_long <- long_data$transformed
-
-  # Create density plots
-  p1 <- ggplot2::ggplot(orig_long, ggplot2::aes(x = Value)) +
-    ggplot2::geom_density(alpha = 0.6, fill = "steelblue", color = "darkblue") +
-    ggplot2::ggtitle("Sample Distribution - Before Preprocessing") +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Intensity Values", y = "Density") +
-    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
-
-  p2 <- ggplot2::ggplot(trans_long, ggplot2::aes(x = Value)) +
-    ggplot2::geom_density(alpha = 0.6, fill = "coral", color = "darkred") +
-    ggplot2::ggtitle("Sample Distribution - After Preprocessing") +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Scaled Values", y = "Density") +
-    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
-
-  # Get available samples from the "After" (transformed) long data
-  available_samples_after <- unique(trans_long$Sample)
-  available_samples_before <- unique(orig_long$Sample)
-
-  # Use intersection to ensure samples exist in both datasets
-  common_samples <- intersect(available_samples_before, available_samples_after)
-
-  # Select random samples for box plots based on "After" data availability
-  n_samples <- length(common_samples)
-  if (is.null(n_random_samples) || n_random_samples >= n_samples) {
-    selected_samples <- common_samples
-    n_selected <- n_samples
-  } else {
-    selected_samples <- sample(common_samples, n_random_samples)
-    n_selected <- n_random_samples
-  }
-
-  # Create box plots
-  p3 <- ggplot2::ggplot(
-    orig_long %>% dplyr::filter(Sample %in% selected_samples),
-    ggplot2::aes(x = reorder(Sample, Value, FUN = median), y = Value)
-  ) +
-    ggplot2::geom_boxplot(fill = "lightblue", alpha = 0.7) +
-    ggplot2::ggtitle(paste("Sample Profiles - Before (n =", n_selected, ")")) +
-    ggplot2::theme_minimal() +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = "Samples", y = "Intensity Values") +
-    ggplot2::theme(
-      axis.text.y = ggplot2::element_text(size = 8),
-      plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold")
-    )
-
-  p4 <- ggplot2::ggplot(
-    trans_long %>% dplyr::filter(Sample %in% selected_samples),
-    ggplot2::aes(x = reorder(Sample, Value, FUN = median), y = Value)
-  ) +
-    ggplot2::geom_boxplot(fill = "lightcoral", alpha = 0.7) +
-    ggplot2::ggtitle(paste("Sample Profiles - After (n =", n_selected, ")")) +
-    ggplot2::theme_minimal() +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = "Samples", y = "Scaled Values") +
-    ggplot2::theme(
-      axis.text.y = ggplot2::element_text(size = 8),
-      plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold")
-    )
-
-  return(list(p1 = p1, p2 = p2, p3 = p3, p4 = p4))
-}
-
-#' Create Feature-wise Plots
-#' @noRd
-.create_feature_plots_plotbeforeafter <- function(long_data, transformed, n_random_features) {
-
-  orig_long <- long_data$original
-  trans_long <- long_data$transformed
-
-  # Get available features from the "After" (transformed) long data
-  available_features_after <- unique(trans_long$Feature)
-  available_features_before <- unique(orig_long$Feature)
-
-  # Use intersection to ensure features exist in both datasets
-  common_features <- intersect(available_features_before, available_features_after)
-
-  # Select random features based on "After" data availability
-  n_features <- length(common_features)
-  if (is.null(n_random_features) || n_random_features >= n_features) {
-    selected_features <- common_features
-    n_selected <- n_features
-  } else {
-    selected_features <- sample(common_features, n_random_features)
-    n_selected <- n_random_features
-  }
-
-  # Filter data for selected features
-  orig_subset <- orig_long %>% dplyr::filter(Feature %in% selected_features)
-  trans_subset <- trans_long %>% dplyr::filter(Feature %in% selected_features)
-
-  # Create density plots
-  p1 <- ggplot2::ggplot(orig_subset, ggplot2::aes(x = Value)) +
-    ggplot2::geom_density(alpha = 0.6, fill = "steelblue", color = "darkblue") +
-    ggplot2::ggtitle(paste("Feature Distribution - Before (n =", n_selected, ")")) +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Intensity Values", y = "Density") +
-    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
-
-  p2 <- ggplot2::ggplot(trans_subset, ggplot2::aes(x = Value)) +
-    ggplot2::geom_density(alpha = 0.6, fill = "coral", color = "darkred") +
-    ggplot2::ggtitle(paste("Feature Distribution - After (n =", n_selected, ")")) +
-    ggplot2::theme_minimal() +
-    ggplot2::labs(x = "Scaled Values", y = "Density") +
-    ggplot2::theme(plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold"))
-
-  # Create box plots
-  p3 <- ggplot2::ggplot(
-    orig_subset,
-    ggplot2::aes(x = reorder(Feature, Value, FUN = median), y = Value)
-  ) +
-    ggplot2::geom_boxplot(fill = "lightblue", alpha = 0.7) +
-    ggplot2::ggtitle(paste("Feature Profiles - Before (n =", n_selected, ")")) +
-    ggplot2::theme_minimal() +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = "Features", y = "Intensity Values") +
-    ggplot2::theme(
-      axis.text.y = ggplot2::element_text(size = 8),
-      plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold")
-    )
-
-  p4 <- ggplot2::ggplot(
-    trans_subset,
-    ggplot2::aes(x = reorder(Feature, Value, FUN = median), y = Value)
-  ) +
-    ggplot2::geom_boxplot(fill = "lightcoral", alpha = 0.7) +
-    ggplot2::ggtitle(paste("Feature Profiles - After (n =", n_selected, ")")) +
-    ggplot2::theme_minimal() +
-    ggplot2::coord_flip() +
-    ggplot2::labs(x = "Features", y = "Scaled Values") +
-    ggplot2::theme(
-      axis.text.y = ggplot2::element_text(size = 8),
-      plot.title = ggplot2::element_text(hjust = 0.5, size = 12, face = "bold")
-    )
-
-  return(list(p1 = p1, p2 = p2, p3 = p3, p4 = p4))
-}
-
-#' Create Combined Grid Plot
-#' @noRd
-.create_combined_plot_plotbeforeafter <- function(plots, group_by) {
-
-  main_title <- paste("Data Preprocessing Comparison:", group_by, "Perspective")
-
-  combined_plot <- gridExtra::grid.arrange(
-    grobs = list(plots$p1, plots$p2, plots$p3, plots$p4),
-    nrow = 2,
-    ncol = 2,
-    top = grid::textGrob(
-      main_title,
-      gp = grid::gpar(fontsize = 14, fontface = "bold")
-    )
-  )
-
-  return(combined_plot)
 }

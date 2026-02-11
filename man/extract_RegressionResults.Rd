@@ -6,114 +6,170 @@
 \usage{
 extract_RegressionResults(
   results,
-  method = "enet",
   alpha = NULL,
   component = NULL,
-  alpha_comparison = FALSE,
   format = "list",
   verbose = TRUE
 )
 }
 \arguments{
 \item{results}{A list object containing results from \code{perform_Regression}.
-Must contain either \code{LASSO_Results}, \code{ElasticNet_Results}, or both.}
-
-\item{method}{Character string specifying which method results to extract.
-Options: \code{"lasso"}, \code{"enet"}, or \code{"both"}. If \code{"both"},
-extracts from both methods if available. Default: \code{"enet"}}
+Must contain \code{BestModel}, \code{AllAlphaResults}, and \code{AlphaComparison}.}
 
 \item{alpha}{Numeric value specifying which alpha value to extract results for.
-Only applicable when the method has multiple alpha results stored in
-\code{AllAlphaResults}. If \code{NULL}, extracts the best-performing alpha.
+Must match one of the alpha values used in the original analysis. Common values:
+\itemize{
+\item{\code{NULL}}: Extracts the best-performing alpha (default)
+\item{\code{0}}: Extracts Ridge regression results
+\item{\code{1}}: Extracts LASSO regression results
+\item{\code{0 < alpha < 1}}: Extracts Elastic Net results for that specific alpha
+}
 Default: \code{NULL}}
 
 \item{component}{Character string specifying which component to extract.
 Options:
 \itemize{
-\item{\code{NULL}}: Extract all components for the specified alpha
+\item{\code{NULL}}: Extract all components for the specified alpha (default)
 \item{\code{"model"}}: Extract the fitted cv.glmnet model object
 \item{\code{"predictions"}}: Extract actual vs predicted values
 \item{\code{"confusion"}}: Extract confusion matrix (classification only)
-\item{\code{"performance"}}: Extract performance metrics
+\item{\code{"performance"}}: Extract performance metrics (Accuracy, RMSE, etc.)
 \item{\code{"coefficients"}}: Extract non-zero coefficients and odds ratios
 \item{\code{"lambda"}}: Extract selected lambda value
+\item{\code{"n_coefficients"}}: Extract the count of non-zero coefficients
+\item{\code{"alpha_comparison"}}: Extract comparison table across all alpha values
 \item{\code{"summary"}}: Extract key summary information
 }
 Default: \code{NULL}}
 
-\item{alpha_comparison}{Logical indicating whether to return the alpha comparison
-data frame instead of specific method results. Overrides other parameters
-except \code{component}. Default: \code{FALSE}}
-
 \item{format}{Character string specifying output format for certain components.
-Options: \code{"list"}, \code{"dataframe"}, \code{"matrix"}. Default: \code{"list"}}
+Options:
+\itemize{
+\item{\code{"list"}}: Return as list (default)
+\item{\code{"dataframe"}}: Convert to data frame where possible
+\item{\code{"matrix"}}: Convert to matrix where possible
+}
+Default: \code{"list"}}
 
-\item{verbose}{Logical indicating whether to print extraction details.
+\item{verbose}{Logical indicating whether to print extraction details to console.
 Default: \code{TRUE}}
 }
 \value{
-Depends on the parameters:
+Depends on the parameters specified:
 \describe{
-\item{All components (\code{component = NULL})}{List containing all result components}
-\item{Specific component}{The requested component (model, data frame, matrix, etc.)}
-\item{Alpha comparison (\code{alpha_comparison = TRUE})}{Data frame with alpha comparisons}
-\item{Both methods (\code{method = "both"})}{List with results from both methods}
+\item{All components (\code{component = NULL})}{
+List containing all result components for the specified alpha:
+Model, Performance, ConfusionMatrix, Predictions, Coefficients,
+N_Coefficients, Lambda, Alpha
+}
+\item{Specific component}{
+The requested component in the specified format (model object, data frame,
+matrix, numeric value, etc.)
+}
+\item{Alpha comparison (\code{component = "alpha_comparison"})}{
+Data frame comparing performance metrics across all tested alpha values
+}
 }
 }
 \description{
 This function extracts specific results from the output of \code{perform_Regression}.
 It can extract all results for a specific alpha value or specific components
 (like coefficients, performance metrics, etc.) for targeted analysis.
-Supports both single method results and multi-alpha comparisons.
+When multiple alpha values were tested, this function allows you to access
+results for any specific alpha or retrieve the best-performing model.
 }
 \details{
 Extract Results from Regularized Regression Analysis
 }
+\note{
+\strong{Extracting Results for Different Alpha Values:}
+\itemize{
+\item{Use \code{alpha = NULL} to get the best model automatically}
+\item{Use \code{alpha = 1} to get LASSO results}
+\item{Use \code{alpha = 0} to get Ridge results}
+\item{Use \code{0 < alpha < 1} to get Elastic Net results}
+\item{Use \code{component = "alpha_comparison"} to compare all tested alphas}
+}
+
+\strong{Helper Functions:}
+\itemize{
+\item{\code{list_available_alphas(results)}: Lists all alpha values tested}
+\item{\code{get_best_alpha(results)}: Returns the best alpha value and its performance}
+}
+}
 \examples{
 \dontrun{
-# Assume results_enet_1se_model1 is your regression results
-
-# Extract all results for alpha = 0.9
-alpha_09_results <- extract_RegressionResults(
-  results = results_enet_1se_model1,
-  method = "enet",
-  alpha = 0.9
+# Assume you ran regression with multiple alphas:
+results <- perform_Regression(
+  data = preprocessed_data,
+  alpha = c(0, 0.25, 0.5, 0.75, 1)
 )
 
-# Extract only coefficients for alpha = 0.9
-coefficients_09 <- extract_RegressionResults(
-  results = results_enet_1se_model1,
-  method = "enet",
-  alpha = 0.9,
+# Example 1: Extract best-performing model (automatic selection)
+best_model <- extract_RegressionResults(
+  results = results,
+  alpha = NULL  # NULL = best model
+)
+
+# Example 2: Extract LASSO results (alpha = 1)
+lasso_results <- extract_RegressionResults(
+  results = results,
+  alpha = 1
+)
+
+# Example 3: Extract Ridge results (alpha = 0)
+ridge_results <- extract_RegressionResults(
+  results = results,
+  alpha = 0
+)
+
+# Example 4: Extract only coefficients for alpha = 0.5
+coefficients_05 <- extract_RegressionResults(
+  results = results,
+  alpha = 0.5,
   component = "coefficients"
 )
 
-# Extract performance metrics for best alpha
-performance_best <- extract_RegressionResults(
-  results = results_enet_1se_model1,
-  method = "enet",
+# Example 5: Extract performance metrics for best alpha
+best_performance <- extract_RegressionResults(
+  results = results,
+  alpha = NULL,
   component = "performance"
 )
 
-# Extract alpha comparison table
+# Example 6: Extract alpha comparison table
 alpha_comparison <- extract_RegressionResults(
-  results = results_enet_1se_model1,
-  alpha_comparison = TRUE
+  results = results,
+  component = "alpha_comparison"
 )
 
-# Extract predictions for alpha = 0.5 as data frame
+# Example 7: Extract predictions as data frame
 predictions_df <- extract_RegressionResults(
-  results = results_enet_1se_model1,
-  method = "enet",
-  alpha = 0.5,
+  results = results,
+  alpha = 1,
   component = "predictions",
   format = "dataframe"
 )
+
+# Example 8: Get number of selected features for LASSO
+n_features <- extract_RegressionResults(
+  results = results,
+  alpha = 1,
+  component = "n_coefficients"
+)
+
+# Example 9: Compare all alpha values side by side
+comparison <- extract_RegressionResults(
+  results = results,
+  component = "alpha_comparison"
+)
+print(comparison)
 }
 
 }
 \seealso{
-\code{\link{perform_Regression}}
+\code{\link{perform_Regression}}, \code{\link{list_available_alphas}},
+\code{\link{get_best_alpha}}
 }
 \author{
 John Lennon L. Calorio
