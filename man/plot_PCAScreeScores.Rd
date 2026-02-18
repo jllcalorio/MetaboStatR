@@ -2,7 +2,7 @@
 % Please edit documentation in R/perform_PCA.R
 \name{plot_PCAScreeScores}
 \alias{plot_PCAScreeScores}
-\title{Display All Plots from Multiple Scores Plots Object}
+\title{Display All Plots from a perform_PCA Object}
 \usage{
 plot_PCAScreeScores(
   multi_plots_obj,
@@ -13,17 +13,17 @@ plot_PCAScreeScores(
 )
 }
 \arguments{
-\item{multi_plots_obj}{Object returned from perform_PCA()}
+\item{multi_plots_obj}{Object returned from \code{perform_PCA()}.}
 
-\item{arrange}{Logical. If TRUE, attempts to arrange plots in a grid using patchwork (if available).
-If FALSE or patchwork unavailable, prints plots individually. Default: TRUE.}
+\item{arrange}{Logical. If \code{TRUE} (default), arranges plots in a grid via
+\pkg{patchwork}. Falls back to individual printing if unavailable.}
 
-\item{include_scree}{Logical. Whether to include the scree plot in the display. Default: TRUE.}
+\item{include_scree}{Logical. Whether to include the scree plot. Default: \code{TRUE}.}
 
-\item{ncol}{Number of columns in the plot arrangement (default: 2)}
+\item{ncol}{Number of columns in the plot grid. Default: \code{2}.}
 
-\item{nrow}{Number of rows in the plot arrangement (default: NULL, auto-calculated)}
+\item{nrow}{Number of rows (default: \code{NULL}, auto-calculated).}
 }
 \description{
-Display All Plots from Multiple Scores Plots Object
+Display All Plots from a perform_PCA Object
 }

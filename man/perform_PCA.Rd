@@ -19,7 +19,9 @@ perform_PCA(
   screeTitle = "Scree Plot",
   screeMaxPC = NULL,
   screeShowValues = TRUE,
-  screeShowCumulative = FALSE
+  screeShowCumulative = FALSE,
+  showOutliers = FALSE,
+  outlierGroups = "all"
 )
 }
 \arguments{
@@ -70,17 +72,63 @@ and removes y-axis labels. Defaults to \code{TRUE}.}
 
 \item{screeShowCumulative}{Boolean. If \code{TRUE}, shows cumulative variance explained
 on top of the scree plot. Only works when screeWhat="variance". Defaults to \code{FALSE}.}
+
+\item{showOutliers}{Boolean. If \code{TRUE}, labels samples that fall outside the 95\\%
+confidence ellipse of their respective group directly on the scores plot(s).
+Outlier detection exactly mirrors \code{ggplot2::stat_ellipse}: the ellipse is
+computed from the group covariance matrix scaled by a t-distribution multiplier
+(\code{qt(0.975, df = n - 1)^2}), and a point is flagged as an outlier when its
+Mahalanobis distance (scaled by the same factor) exceeds 1. Requires at least
+3 samples per group (the same minimum needed to draw an ellipse). Defaults to
+\code{FALSE}. Note: has no effect when \code{scoresColorVar} is supplied, because
+ellipses are not drawn in gradient-color mode.
+Labels are rendered with \pkg{ggrepel} to prevent overlap; connecting segments
+are drawn from each label to its corresponding point.}
+
+\item{outlierGroups}{Character vector controlling which groups are checked for
+outliers and labelled on the plot. Accepted values are:
+\itemize{
+\item \code{"all"} — every group present in the data (default).
+\item Any group name(s) found in \code{Metadata$Group} (or
+\code{Metadata_merged$Group} when replicates were merged), e.g.
+\code{c("GroupA", "GroupB")}.
+\item \code{"QC"} — a convenience alias that selects all QC-type groups
+(\code{"SQC"}, \code{"EQC"}, \code{"QC"}) that are present in the data.
+Note that QC samples must also be included via \code{includeQC = TRUE}
+for this to have any effect.
+}
+Multiple values can be combined, e.g. \code{c("GroupA", "QC")}. Any value not
+recognised as a group name present in the data will trigger a warning.
+Defaults to \code{"all"}.}
 }
 \value{
 Returns a list containing:
 \itemize{
-\item plots: A list of ggplot objects, one for each PC combination
-\item scree_plot: A ggplot object for the scree plot (if includeScree is TRUE)
-\item plot_info: A data frame with information about each plot (PC combinations, variance explained)
-\item pca_results: The PCA results object
-\item data_used: The data matrix used for PCA
-\item variance_explained: Vector of variance explained by each PC
-\item eigenvalues: Vector of eigenvalues for each PC
+\item \code{plots}: A list of ggplot objects, one for each PC combination.
+\item \code{scree_plot}: A ggplot object for the scree plot (if \code{includeScree}
+is \code{TRUE}).
+\item \code{plot_info}: A data frame with information about each plot (PC
+combinations, variance explained).
+\item \code{pca_results}: The PCA results object from \code{stats::prcomp}.
+\item \code{data_used}: The data matrix used for PCA.
+\item \code{variance_explained}: Data frame of variance explained (\\%) per PC.
+\item \code{eigenvalues}: Data frame of eigenvalues per PC.
+\item \code{scores_data}: A list of data frames, one per PC combination (named
+identically to \code{plots}). Each data frame contains:
+\itemize{
+\item \code{Label} — sample name / row name.
+\item \code{Group} — group assignment.
+\item \code{Batch} — batch assignment.
+\item \code{SampleType} — \code{"QC"} or \code{"Biological"}.
+\item \code{PC<i>}, \code{PC<j>} — scores on the two plotted PCs.
+\item \code{mahal_dist} — Mahalanobis distance from the group centroid
+in the 2-D PC space (groups with < 3 samples receive \code{NA}).
+\item \code{ellipse_threshold} — the t-based scaling factor used as the
+95\\% CI boundary, matching \code{ggplot2::stat_ellipse} exactly
+(\code{NA} for groups with < 3 samples).
+\item \code{is_outlier} — logical; \code{TRUE} when the point lies
+outside the 95\\% ellipse as drawn by \code{stat_ellipse}.
+}
 }
 }
 \description{
@@ -97,16 +145,35 @@ multi_plots <- perform_PCA(
   includeQC = FALSE
 )
 
+# PCA with outlier labeling for all groups
+multi_plots_outliers <- perform_PCA(
+  data = data_from_perform_PreprocessingPeakData_function,
+  scorePC = list(c(1,2)),
+  showOutliers = TRUE,
+  outlierGroups = "all"
+)
+
+# Label outliers only in specific groups
+multi_plots_sel <- perform_PCA(
+  data = data_from_perform_PreprocessingPeakData_function,
+  scorePC = list(c(1,2)),
+  showOutliers = TRUE,
+  outlierGroups = c("GroupA", "GroupB")
+)
+
 # PCA with gradient coloring by a continuous variable (e.g., "Time")
 multi_plots_time <- perform_PCA(
   data = data_from_perform_PreprocessingPeakData_function,
   scorePC = list(c(1,2)),
   includeQC = TRUE,
-  scoresColorVar = "Time",       # column in Metadata
+  scoresColorVar = "Time",
   scoresLegend = "Collection Time"
 )
 
 plot_PCAScreeScores(multi_plots_time)
+
+# Inspect per-sample scores and outlier flags
+head(multi_plots_outliers$scores_data[["PC1_vs_PC2"]])
 }
 }
 \references{

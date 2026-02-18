@@ -7,14 +7,14 @@
 get_ScreeData(multi_plots_obj, what = "variance", max_pc = NULL)
 }
 \arguments{
-\item{multi_plots_obj}{Object returned from perform_PCA()}
+\item{multi_plots_obj}{Object returned from \code{perform_PCA()}.}
 
-\item{what}{Character. "variance" or "eigenvalue" to specify what values to return}
+\item{what}{Character. \code{"variance"} or \code{"eigenvalue"}.}
 
-\item{max_pc}{Integer. Maximum number of PCs to include. If NULL, includes all.}
+\item{max_pc}{Integer. Maximum number of PCs. If \code{NULL}, includes all.}
 }
 \value{
-Data frame with PC information
+Data frame with PC-level summary statistics.
 }
 \description{
 Extract Scree Plot Data
