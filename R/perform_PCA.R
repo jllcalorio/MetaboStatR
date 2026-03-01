@@ -602,21 +602,22 @@ perform_PCA <- function(
               x     = .data[[pc1_col]],
               y     = .data[[pc2_col]],
               label = Label,
-              color = Group          # match group colour for the label border
+              color = Group
             ),
-            fill              = "white",
-            size              = 3,
-            label.padding     = ggplot2::unit(0.15, "lines"),
-            box.padding       = ggplot2::unit(0.5,  "lines"),
-            point.padding     = ggplot2::unit(0.3,  "lines"),
-            segment.color     = "grey40",
-            # segment.linewidth = 0.5,
-            segment.linetype  = "solid",
-            min.segment.length = 0,          # always draw the segment
-            max.overlaps      = Inf,         # never silently drop labels
-            force             = 3,           # repulsion strength
-            force_pull        = 0.5,
-            show.legend       = FALSE
+            fill               = "white",
+            size               = 3,
+            label.padding      = ggplot2::unit(0.15, "lines"),
+            box.padding        = ggplot2::unit(0.5,  "lines"),
+            point.padding      = ggplot2::unit(0.3,  "lines"),
+            segment.color      = "grey40",
+            segment.linetype   = "solid",
+            min.segment.length = 0,
+            max.overlaps       = Inf,
+            max.iter           = 100000,
+            max.time           = 10,
+            force              = 3,
+            force_pull         = 0.5,
+            show.legend        = FALSE
           )
       }
     }
