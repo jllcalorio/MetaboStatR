@@ -1,6 +1,6 @@
 Package: MetaboStatR
 Title: Metabolomics and Statistics on R
-Version: 0.0.0.9000
+Version: 1.0
 Authors@R: 
     person("John Lennon", "Calorio", , "jllcalorio@gmail.com", role = c("aut", "cre"))
 Description: Perform Data Preprocessing, Bioinformatics and Statistical Data Analysis, and Data Visualization on Peak Intensities Data.

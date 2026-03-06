@@ -31,15 +31,20 @@ perform_DataQualityCheck(
 
 \item{clean_names}{Logical indicating whether to clean special characters. Default is TRUE.}
 
-\item{merge_duplicate_samples_by}{Character string: NULL, "mean", or "median". Default is NULL.}
+\item{merge_duplicate_samples_by}{Character. Method to merge duplicate
+sample names ("mean" or "median"). If NULL, duplicates are not merged.
+If duplicate sample names are detected and this argument is NULL,
+a warning is issued and processing continues without merging.}
 
 \item{verbose}{Logical indicating whether to display progress messages. Default is TRUE.}
 }
 \value{
 A list containing:
-\item{raw_data}{Original data as loaded}
+\item{raw_data}{Original data as loaded (with merged duplicates if requested)}
 \item{metadata_summary}{Summary statistics (Groups as dataframe)}
 \item{validation_report}{Detailed validation results}
+\item{duplicate_sample_summary}{Data frame summarizing duplicate sample names,
+including counts and Excel-style column locations in the original data.}
 \item{file_info}{Information about the source file}
 \item{processing_log}{Log of all processing steps including execution time}
 }
