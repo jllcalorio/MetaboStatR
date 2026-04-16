@@ -24,7 +24,7 @@ perform_ComparativeAnalysis(
 }}
 
 \item{adjust_p_method}{Character. Method for p-value adjustment, passed to
-\code{auto_compare}. Default is "BH". Options include:
+\code{run_diff}. Default is "BH". Options include:
 \itemize{
 \item "holm": Holm (1979) - Controls family-wise error rate
 \item "hochberg": Hochberg (1988) - Less conservative than Bonferroni
@@ -40,12 +40,12 @@ perform_ComparativeAnalysis(
 adjusted post-hoc p-values in ascending order.}
 
 \item{paired}{Logical. If \code{TRUE}, performs paired sample tests (passed to
-\code{auto_compare}). Default is \code{FALSE}.}
+\code{run_diff}). Default is \code{FALSE}.}
 
 \item{plot_metabolites}{Character vector. Names of metabolites to visualize. If provided,
 generates statistical plots using \code{ggstatsplot}. Default is \code{NULL} (no plots).}
 
-\item{alpha}{Numeric. Significance threshold passed to \code{auto_compare} for
+\item{alpha}{Numeric. Significance threshold passed to \code{run_diff} for
 assumption tests (\code{alpha_normality}, \code{alpha_variance}) and the main
 test (\code{test_alpha}). Default is 0.05.}
 
@@ -67,10 +67,10 @@ Includes \code{posthoc_test_used} and a combined \code{interpretation} column.
 }
 \description{
 Conducts comprehensive comparative statistical analysis on preprocessed metabolomics data
-by iterating over each metabolite and applying the 'auto_compare' function.
+by iterating over each metabolite and applying the 'run_diff' function.
 }
 \details{
-This function serves as a wrapper for the \code{auto_compare} function, applying
+This function serves as a wrapper for the \code{run_diff} function, applying
 it to each metabolite (column) in a metabolomics data matrix.
 
 The function performs the following workflow:
@@ -78,20 +78,20 @@ The function performs the following workflow:
 \item Validates input data structure and parameters.
 \item Removes quality control samples from analysis.
 \item For each metabolite, it combines the data with the group metadata.
-\item Calls \code{auto_compare} to select and perform the appropriate statistical test.
+\item Calls \code{run_diff} to select and perform the appropriate statistical test.
 \item Aggregates the results from all metabolites into a single data frame.
-\item Applies the specified p-value adjustment method \emph{within} each call to \code{auto_compare}
+\item Applies the specified p-value adjustment method \emph{within} each call to \code{run_diff}
 for post-hoc tests.
 \item Generates optional visualization plots using \code{ggstatsplot}.
 }
 
-\strong{NOTE:} This function requires the \code{auto_compare} function to be
-loaded into the R environment (e.g., by sourcing \code{auto_compare.R}).
+\strong{NOTE:} This function requires the \code{run_diff} function to be
+loaded into the R environment (e.g., by sourcing \code{run_diff.R}).
 }
 \examples{
 \dontrun{
-# Assuming 'auto_compare.R' has been sourced
-# source("auto_compare.R")
+# Assuming 'run_diff.R' has been sourced
+# source("run_diff.R")
 
 # Basic two-group comparison
 results <- perform_ComparativeAnalysis(
@@ -117,7 +117,7 @@ results <- perform_ComparativeAnalysis(
 
 }
 \seealso{
-\code{\link{perform_PreprocessingPeakData}}, \code{auto_compare},
+\code{\link{perform_PreprocessingPeakData}}, \code{run_diff},
 \code{\link[ggstatsplot]{ggbetweenstats}}
 }
 \author{
